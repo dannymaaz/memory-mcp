@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from persistent_memory_mcp.context_engine import build_context, estimate_tokens
+from persistent_memory_mcp.project_guardrails import compact_guardrails
 
 
 class ContextOptimizer:
@@ -22,6 +23,16 @@ class ContextOptimizer:
     def estimate_tokens(self, payload: Any) -> int:
         """Estimate tokens without requiring a provider tokenizer."""
         return estimate_tokens(payload)
+
+    def _prepare_context(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Attach compact critical rules to the always-loaded project block."""
+        prepared = dict(context)
+        manifest = prepared.get("project_guardrails")
+        if isinstance(manifest, dict):
+            project = dict(prepared.get("project") or {})
+            project["guardrails"] = compact_guardrails(manifest)
+            prepared["project"] = project
+        return prepared
 
     def _resolve_options(
         self,
@@ -75,7 +86,7 @@ class ContextOptimizer:
             include_untrusted=include_untrusted,
         )
         return build_context(
-            context,
+            self._prepare_context(context),
             intent=resolved_intent,
             layer=resolved_layer,
             budget=max_tokens,
@@ -106,7 +117,7 @@ class ContextOptimizer:
             or self.INTERFACE_LIMITS.get(interface_key, self.INTERFACE_LIMITS["native"])
         )
         result = build_context(
-            context,
+            self._prepare_context(context),
             intent=resolved_intent,
             layer=resolved_layer,
             budget=limit,
@@ -115,6 +126,10 @@ class ContextOptimizer:
         optimized = dict(result.context)
         optimized["interface"] = interface_key
         optimized["token_estimate"] = result.metrics.returned_tokens
+        guardrails_loaded = bool(
+            isinstance(optimized.get("project"), dict)
+            and optimized["project"].get("guardrails")
+        )
         optimized["strategy"] = {
             "limit": limit,
             "layer": result.layer,
@@ -128,5 +143,6 @@ class ContextOptimizer:
             "saved_tokens": result.metrics.saved_tokens,
             "savings_percent": result.metrics.savings_percent,
             "compressed_items": result.metrics.compressed_items,
+            "guardrails_loaded": guardrails_loaded,
         }
         return optimized
