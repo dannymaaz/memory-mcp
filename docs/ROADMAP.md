@@ -21,11 +21,13 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 
 ## PR #3 — Local SQLite starter mode
 
-- [ ] Storage-adapter interface
-- [ ] SQLite schema and migrations
+- [x] Storage-adapter interface
+- [x] SQLite schema and initialization
+- [x] Local health check and scoped destructive operations
 - [ ] Backend selection in `memory-mcp init`
+- [ ] Connect `src/server.py` to the storage adapter
 - [ ] Import/export between SQLite and Supabase
-- [ ] Backend parity tests
+- [ ] Backend parity tests across real server handlers
 
 ## PR #4 — Safe automatic client installation
 
