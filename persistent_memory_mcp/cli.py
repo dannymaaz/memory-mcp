@@ -81,7 +81,7 @@ def _prompt_clients() -> list[str]:
         if answer.lower() == "all" or "5" in {item.strip() for item in answer.split(",")}:
             return list(CLIENTS)
         try:
-            indexes = [int(item.strip()) for item in answer.split(")")]
+            indexes = [int(item.strip()) for item in answer.split(",")]
         except ValueError:
             try:
                 return _normalize_clients(answer)
@@ -198,9 +198,10 @@ def command_init(args: argparse.Namespace) -> int:
     print(f"{'✓' if ok else '!'} Supabase connection: {detail}")
     print("Next: run schema.sql in Supabase, then merge each generated file into its client config.")
     if "claude" in written:
+        claude_path = written["claude"]
         print(
             "Claude Code shortcut: claude mcp add-json --scope user "
-            "persistent-memory-mcp \"$(cat claude-server.json)\""
+            f"persistent-memory-mcp \"$(cat {claude_path})\""
         )
     return 0 if ok else 1
 
