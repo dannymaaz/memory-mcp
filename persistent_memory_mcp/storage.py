@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
 JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
@@ -35,6 +37,19 @@ class StorageAdapter(Protocol):
     def healthcheck(self) -> tuple[bool, str]: ...
 
 
+_CONFLICT_COLUMNS: dict[str, tuple[str, ...]] = {
+    "workspaces": ("owner_id", "slug"),
+    "projects": ("owner_id", "slug"),
+    "preferences": ("project_id", "preference_key"),
+    "session_state": ("session_id",),
+    "file_memory": ("project_id", "file_path"),
+    "file_relations": ("project_id", "source_file", "target_file", "relation_type"),
+    "prompt_patterns": ("project_id", "title"),
+    "retention_policies": ("project_id",),
+    "memory_documents": ("project_id", "source_type", "source_id"),
+}
+
+
 class SQLiteStorage:
     """Local-first SQLite implementation with explicit table allow-listing."""
 
@@ -43,12 +58,18 @@ class SQLiteStorage:
         {
             "workspaces",
             "projects",
+            "architecture",
             "decisions",
             "tasks",
+            "preferences",
             "warnings",
             "sessions",
+            "session_state",
+            "interface_logs",
             "checkpoints",
             "file_memory",
+            "file_relations",
+            "prompt_patterns",
             "memory_documents",
             "timeline_events",
             "retention_policies",
@@ -87,13 +108,27 @@ class SQLiteStorage:
     @staticmethod
     def _decode_row(row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
-        for key in ("metadata", "payload", "keywords", "repo_status"):
+        for key in (
+            "metadata",
+            "payload",
+            "keywords",
+            "repo_status",
+            "state",
+            "blockers",
+            "next_steps",
+            "symbols",
+            "preference_value",
+        ):
             value = result.get(key)
             if isinstance(value, str) and value and value[:1] in "[{":
                 try:
                     result[key] = json.loads(value)
                 except json.JSONDecodeError:
                     pass
+        for key, value in tuple(result.items()):
+            if key.startswith("is_") or key in {"summarize_archived"}:
+                if isinstance(value, int):
+                    result[key] = bool(value)
         return result
 
     @staticmethod
@@ -122,12 +157,11 @@ class SQLiteStorage:
             cursor = connection.execute(
                 f'insert into "{table}" ({column_sql}) values ({placeholders})', values
             )
-            row_id = payload.get("id") or cursor.lastrowid
             connection.commit()
-            row = connection.execute(f'select * from "{table}" where rowid = ?', (cursor.lastrowid,)).fetchone()
-        if row is None:
-            return {**payload, "id": row_id}
-        return self._decode_row(row)
+            row = connection.execute(
+                f'select * from "{table}" where rowid = ?', (cursor.lastrowid,)
+            ).fetchone()
+        return self._decode_row(row) if row is not None else dict(payload)
 
     def upsert(
         self,
@@ -137,11 +171,14 @@ class SQLiteStorage:
     ) -> dict[str, Any]:
         table = self._validate_table(table)
         columns = list(payload)
-        conflicts = list(conflict_columns or (["id"] if payload.get("id") else []))
+        conflicts = list(
+            conflict_columns
+            or (["id"] if payload.get("id") else _CONFLICT_COLUMNS.get(table, ()))
+        )
         if not conflicts:
             return self.insert(table, payload)
         if any(column not in columns for column in conflicts):
-            raise ValueError("conflict columns must be present in payload")
+            return self.insert(table, payload)
         placeholders = ", ".join("?" for _ in columns)
         column_sql = ", ".join(f'"{column}"' for column in columns)
         conflict_sql = ", ".join(f'"{column}"' for column in conflicts)
@@ -167,7 +204,7 @@ class SQLiteStorage:
         table = self._validate_table(table)
         if not filters:
             raise ValueError("destructive operations require filters")
-        if "owner_id" not in filters or "project_id" not in filters:
+        if table != "workspaces" and ("owner_id" not in filters or "project_id" not in filters):
             raise ValueError("delete requires owner_id and project_id scope")
         where_sql, params = self._where(filters)
         with self.connect() as connection:
@@ -184,10 +221,100 @@ class SQLiteStorage:
             return False, str(exc)
 
 
+class SQLiteQuery:
+    """Small PostgREST-like query facade used by the existing MCP server."""
+
+    def __init__(self, storage: SQLiteStorage, table: str) -> None:
+        self.storage = storage
+        self.table_name = table
+        self.operation = "select"
+        self.payload: Mapping[str, Any] | None = None
+        self.filters: dict[str, Any] = {}
+
+    def select(self, _columns: str = "*") -> "SQLiteQuery":
+        self.operation = "select"
+        return self
+
+    def insert(self, payload: Mapping[str, Any]) -> "SQLiteQuery":
+        self.operation = "insert"
+        self.payload = payload
+        return self
+
+    def upsert(self, payload: Mapping[str, Any]) -> "SQLiteQuery":
+        self.operation = "upsert"
+        self.payload = payload
+        return self
+
+    def delete(self) -> "SQLiteQuery":
+        self.operation = "delete"
+        return self
+
+    def eq(self, key: str, value: Any) -> "SQLiteQuery":
+        self.filters[key] = value
+        return self
+
+    def execute(self) -> SimpleNamespace:
+        if self.operation == "select":
+            data: Any = self.storage.select(self.table_name, self.filters)
+        elif self.operation == "insert":
+            if self.payload is None:
+                raise ValueError("insert payload is required")
+            data = [self.storage.insert(self.table_name, self.payload)]
+        elif self.operation == "upsert":
+            if self.payload is None:
+                raise ValueError("upsert payload is required")
+            data = [self.storage.upsert(self.table_name, self.payload)]
+        elif self.operation == "delete":
+            data = {"count": self.storage.delete(self.table_name, self.filters)}
+        else:  # pragma: no cover - defensive
+            raise ValueError(f"Unsupported SQLite operation: {self.operation}")
+        return SimpleNamespace(data=data)
+
+
+class SQLiteClient:
+    """Supabase-client-compatible facade for the existing service layer."""
+
+    backend_name = "sqlite"
+
+    def __init__(self, storage: SQLiteStorage) -> None:
+        self.storage = storage
+        self.options = SimpleNamespace(headers={})
+        self.postgrest = SimpleNamespace(headers={})
+        self.owner_id = ""
+
+    def table(self, name: str) -> SQLiteQuery:
+        return SQLiteQuery(self.storage, name)
+
+    def rpc(self, _function_name: str, _params: Mapping[str, Any]) -> SQLiteQuery:
+        raise NotImplementedError("SQLite semantic RPC is not available; lexical fallback is used")
+
+
+def normalize_backend(value: str | None) -> str:
+    """Normalize supported backend aliases."""
+
+    normalized = (value or "supabase").strip().lower()
+    aliases = {"postgres": "postgresql", "local": "sqlite"}
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"sqlite", "supabase", "postgresql"}:
+        raise ValueError("MEMORY_BACKEND must be sqlite, supabase, or postgresql")
+    return normalized
+
+
 def create_storage(backend: str, *, sqlite_path: str | Path | None = None) -> StorageAdapter:
     """Create a configured storage adapter without importing remote dependencies."""
 
-    normalized = backend.strip().lower()
+    normalized = normalize_backend(backend)
     if normalized == "sqlite":
-        return SQLiteStorage(sqlite_path or Path.home() / ".memory-mcp" / "memory.db")
-    raise ValueError(f"Unsupported backend: {backend}")
+        storage = SQLiteStorage(sqlite_path or Path.home() / ".memory-mcp" / "memory.db")
+        storage.initialize()
+        return storage
+    raise ValueError(f"Backend {normalized} uses the existing remote client, not a local adapter")
+
+
+def create_sqlite_client(path: str | Path | None = None) -> SQLiteClient:
+    """Create and initialize the SQLite facade used by the MCP server."""
+
+    resolved = path or os.getenv("SQLITE_PATH") or Path.home() / ".memory-mcp" / "memory.db"
+    storage = SQLiteStorage(resolved)
+    storage.initialize()
+    return SQLiteClient(storage)
