@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-ENV_KEYS = ("SUPABASE_URL", "SUPABASE_KEY", "OWNER_ID")
+from .storage import SQLiteStorage, normalize_backend
+
 CLIENTS = ("codex", "claude", "opencode", "antigravity")
 CLIENT_LABELS = {
     "codex": "OpenAI Codex",
@@ -17,6 +18,7 @@ CLIENT_LABELS = {
     "opencode": "OpenCode",
     "antigravity": "Google Antigravity",
 }
+BACKENDS = ("sqlite", "supabase", "postgresql")
 
 
 def _read_env(path: Path) -> dict[str, str]:
@@ -34,22 +36,33 @@ def _read_env(path: Path) -> dict[str, str]:
 
 def _write_env(path: Path, values: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "# Persistent Memory MCP configuration\n"
-        f"SUPABASE_URL={values['SUPABASE_URL']}\n"
-        f"SUPABASE_KEY={values['SUPABASE_KEY']}\n"
-        f"OWNER_ID={values['OWNER_ID']}\n"
-        "# Optional direct PostgreSQL connection\n"
-        f"DATABASE_URL={values.get('DATABASE_URL', '')}\n",
-        encoding="utf-8",
+    ordered = (
+        "MEMORY_BACKEND",
+        "OWNER_ID",
+        "SQLITE_PATH",
+        "SUPABASE_URL",
+        "SUPABASE_KEY",
+        "DATABASE_URL",
     )
+    lines = ["# Persistent Memory MCP configuration"]
+    lines.extend(f"{key}={values.get(key, '')}" for key in ordered)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _runtime_env(values: dict[str, str]) -> dict[str, str]:
+    backend = normalize_backend(values.get("MEMORY_BACKEND"))
+    keys = ["MEMORY_BACKEND", "OWNER_ID"]
+    if backend == "sqlite":
+        keys.append("SQLITE_PATH")
+    elif backend == "supabase":
+        keys.extend(["SUPABASE_URL", "SUPABASE_KEY"])
+    else:
+        keys.extend(["DATABASE_URL", "SUPABASE_URL", "SUPABASE_KEY"])
+    return {key: values.get(key, "") for key in keys if values.get(key, "")}
 
 
 def _server_config(values: dict[str, str]) -> dict[str, object]:
-    return {
-        "command": "memory-mcp",
-        "env": {key: values[key] for key in ENV_KEYS},
-    }
+    return {"command": "memory-mcp", "env": _runtime_env(values)}
 
 
 def _config_block(values: dict[str, str]) -> dict[str, object]:
@@ -75,7 +88,6 @@ def _prompt_clients() -> list[str]:
     for index, client in enumerate(CLIENTS, start=1):
         print(f"  {index}. {CLIENT_LABELS[client]}")
     print("  5. All clients")
-    print("Select one or more, separated by commas (example: 1,2,4).")
     while True:
         answer = input("Clients [5]: ").strip() or "5"
         if answer.lower() == "all" or "5" in {item.strip() for item in answer.split(",")}:
@@ -93,9 +105,28 @@ def _prompt_clients() -> list[str]:
         print("! Enter client numbers from 1 to 5, names separated by commas, or 'all'.")
 
 
+def _prompt_backend(current: str | None = None) -> str:
+    default = normalize_backend(current or "sqlite")
+    labels = {
+        "sqlite": "SQLite local (recommended for individual/offline use)",
+        "supabase": "Supabase cloud",
+        "postgresql": "Direct PostgreSQL",
+    }
+    print("\nWhere should Persistent Memory MCP store knowledge?")
+    for index, backend in enumerate(BACKENDS, start=1):
+        suffix = " [default]" if backend == default else ""
+        print(f"  {index}. {labels[backend]}{suffix}")
+    answer = input(f"Backend [{BACKENDS.index(default) + 1}]: ").strip()
+    if not answer:
+        return default
+    if answer.isdigit() and 1 <= int(answer) <= len(BACKENDS):
+        return BACKENDS[int(answer) - 1]
+    return normalize_backend(answer)
+
+
 def _codex_toml(values: dict[str, str]) -> str:
     env_items = ", ".join(
-        f'{json.dumps(key)} = {json.dumps(values[key])}' for key in ENV_KEYS
+        f'{json.dumps(key)} = {json.dumps(value)}' for key, value in _runtime_env(values).items()
     )
     return (
         "# Merge this block into ~/.codex/config.toml\n"
@@ -112,7 +143,7 @@ def _opencode_config(values: dict[str, str]) -> dict[str, object]:
             "persistent-memory-mcp": {
                 "type": "local",
                 "command": ["memory-mcp"],
-                "environment": {key: values[key] for key in ENV_KEYS},
+                "environment": _runtime_env(values),
                 "enabled": True,
             }
         },
@@ -127,7 +158,7 @@ def _client_payload(client: str, values: dict[str, str]) -> tuple[str, str]:
             "type": "stdio",
             "command": "memory-mcp",
             "args": [],
-            "env": {key: values[key] for key in ENV_KEYS},
+            "env": _runtime_env(values),
         }
         return "claude-server.json", json.dumps(payload, indent=2) + "\n"
     if client == "opencode":
@@ -158,7 +189,7 @@ def _check_supabase(url: str, key: str) -> tuple[bool, str]:
         headers={"apikey": key, "Authorization": f"Bearer {key}"},
     )
     try:
-        with urlopen(request, timeout=8) as response:  # nosec B310 - user supplied HTTPS endpoint
+        with urlopen(request, timeout=8) as response:  # nosec B310 - HTTPS supplied by user
             return response.status < 500, f"HTTP {response.status}"
     except HTTPError as exc:
         return exc.code < 500, f"HTTP {exc.code}"
@@ -166,20 +197,47 @@ def _check_supabase(url: str, key: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _check_backend(values: dict[str, str], skip_remote: bool = False) -> tuple[bool, str]:
+    backend = normalize_backend(values.get("MEMORY_BACKEND"))
+    if backend == "sqlite":
+        storage = SQLiteStorage(values["SQLITE_PATH"])
+        storage.initialize()
+        return storage.healthcheck()
+    if backend == "postgresql":
+        return (bool(values.get("DATABASE_URL")), "DATABASE_URL configured" if values.get("DATABASE_URL") else "DATABASE_URL missing")
+    if skip_remote:
+        return True, "skipped"
+    return _check_supabase(values.get("SUPABASE_URL", ""), values.get("SUPABASE_KEY", ""))
+
+
 def command_init(args: argparse.Namespace) -> int:
     env_path = Path(args.env).expanduser().resolve()
     current = _read_env(env_path)
-    url = args.supabase_url or current.get("SUPABASE_URL") or input("Supabase URL: ").strip()
-    key = args.supabase_key or current.get("SUPABASE_KEY") or input("Supabase anon key: ").strip()
-    owner = args.owner_id or current.get("OWNER_ID") or f"owner-{secrets.token_hex(6)}"
-    values = {
-        "SUPABASE_URL": url,
-        "SUPABASE_KEY": key,
-        "OWNER_ID": owner,
-        "DATABASE_URL": current.get("DATABASE_URL", ""),
-    }
-    _write_env(env_path, values)
+    try:
+        backend = normalize_backend(args.backend) if args.backend else (
+            _prompt_backend(current.get("MEMORY_BACKEND")) if sys.stdin.isatty() else normalize_backend(current.get("MEMORY_BACKEND") or "sqlite")
+        )
+    except ValueError as exc:
+        print(f"✗ {exc}")
+        return 2
 
+    owner = args.owner_id or current.get("OWNER_ID") or f"owner-{secrets.token_hex(6)}"
+    sqlite_default = current.get("SQLITE_PATH") or str(Path.home() / ".memory-mcp" / "memory.db")
+    values = {
+        "MEMORY_BACKEND": backend,
+        "OWNER_ID": owner,
+        "SQLITE_PATH": str(Path(args.sqlite_path or sqlite_default).expanduser().resolve()),
+        "SUPABASE_URL": args.supabase_url or current.get("SUPABASE_URL", ""),
+        "SUPABASE_KEY": args.supabase_key or current.get("SUPABASE_KEY", ""),
+        "DATABASE_URL": args.database_url or current.get("DATABASE_URL", ""),
+    }
+    if backend == "supabase" and sys.stdin.isatty():
+        values["SUPABASE_URL"] = values["SUPABASE_URL"] or input("Supabase URL: ").strip()
+        values["SUPABASE_KEY"] = values["SUPABASE_KEY"] or input("Supabase anon key: ").strip()
+    if backend == "postgresql" and sys.stdin.isatty():
+        values["DATABASE_URL"] = values["DATABASE_URL"] or input("PostgreSQL DATABASE_URL: ").strip()
+
+    _write_env(env_path, values)
     try:
         clients = _normalize_clients(args.clients)
     except ValueError as exc:
@@ -190,61 +248,63 @@ def command_init(args: argparse.Namespace) -> int:
 
     output_dir = Path(args.output_dir).expanduser().resolve()
     written = _write_client_configs(output_dir, clients, values)
-    ok, detail = _check_supabase(url, key) if not args.skip_connection_test else (True, "skipped")
-
+    ok, detail = _check_backend(values, skip_remote=args.skip_connection_test)
     print(f"✓ Environment written to {env_path}")
     for client, path in written.items():
         print(f"✓ {CLIENT_LABELS[client]} configuration written to {path}")
-    print(f"{'✓' if ok else '!'} Supabase connection: {detail}")
-    print("Next: run schema.sql in Supabase, then merge each generated file into its client config.")
-    if "claude" in written:
-        claude_path = written["claude"]
-        print(
-            "Claude Code shortcut: claude mcp add-json --scope user "
-            f"persistent-memory-mcp \"$(cat {claude_path})\""
-        )
+    print(f"{'✓' if ok else '✗'} {backend} backend: {detail}")
+    if backend == "sqlite":
+        print("Next: run memory-mcp serve. The local database is initialized automatically.")
+    else:
+        print("Next: apply schema.sql to the remote database, then run memory-mcp serve.")
     return 0 if ok else 1
 
 
 def command_doctor(args: argparse.Namespace) -> int:
     env_path = Path(args.env).expanduser().resolve()
-    values = {
-        **_read_env(env_path),
-        **{key: os.getenv(key, "") for key in ENV_KEYS if os.getenv(key)},
-    }
+    values = {**_read_env(env_path), **{key: value for key in (
+        "MEMORY_BACKEND", "OWNER_ID", "SQLITE_PATH", "SUPABASE_URL", "SUPABASE_KEY", "DATABASE_URL"
+    ) if (value := os.getenv(key))}}
     failures = 0
     print("Persistent Memory MCP doctor")
     print(f"{'✓' if sys.version_info >= (3, 11) else '✗'} Python {sys.version.split()[0]}")
     failures += int(sys.version_info < (3, 11))
-    for key in ENV_KEYS:
-        present = bool(values.get(key))
-        print(f"{'✓' if present else '✗'} {key}")
-        failures += int(not present)
-    if values.get("SUPABASE_URL") and values.get("SUPABASE_KEY"):
-        ok, detail = _check_supabase(values["SUPABASE_URL"], values["SUPABASE_KEY"])
-        print(f"{'✓' if ok else '✗'} Supabase API ({detail})")
-        failures += int(not ok)
-    print(f"{'✓' if Path('schema.sql').exists() else '!'} schema.sql available")
+    try:
+        backend = normalize_backend(values.get("MEMORY_BACKEND"))
+        print(f"✓ MEMORY_BACKEND={backend}")
+    except ValueError as exc:
+        print(f"✗ {exc}")
+        return 1
+    owner_present = bool(values.get("OWNER_ID"))
+    print(f"{'✓' if owner_present else '✗'} OWNER_ID")
+    failures += int(not owner_present)
+    ok, detail = _check_backend(values)
+    print(f"{'✓' if ok else '✗'} {backend} backend ({detail})")
+    failures += int(not ok)
     return 1 if failures else 0
 
 
 def command_status(args: argparse.Namespace) -> int:
-    values = {
-        **_read_env(Path(args.env).expanduser()),
-        **{key: os.getenv(key, "") for key in ENV_KEYS if os.getenv(key)},
-    }
-    print(
-        json.dumps(
-            {
-                "package": "persistent-memory-mcp",
-                "configured": all(values.get(key) for key in ENV_KEYS),
-                "owner_id": values.get("OWNER_ID", ""),
-                "backend": "supabase",
-                "supported_clients": list(CLIENTS),
-            },
-            indent=2,
-        )
+    values = {**_read_env(Path(args.env).expanduser()), **{key: value for key in (
+        "MEMORY_BACKEND", "OWNER_ID", "SQLITE_PATH", "SUPABASE_URL", "SUPABASE_KEY", "DATABASE_URL"
+    ) if (value := os.getenv(key))}}
+    try:
+        backend = normalize_backend(values.get("MEMORY_BACKEND"))
+    except ValueError:
+        backend = "invalid"
+    configured = bool(values.get("OWNER_ID")) and (
+        bool(values.get("SQLITE_PATH")) if backend == "sqlite" else
+        bool(values.get("SUPABASE_URL") and values.get("SUPABASE_KEY")) if backend == "supabase" else
+        bool(values.get("DATABASE_URL"))
     )
+    print(json.dumps({
+        "package": "persistent-memory-mcp",
+        "configured": configured,
+        "owner_id": values.get("OWNER_ID", ""),
+        "backend": backend,
+        "sqlite_path": values.get("SQLITE_PATH", "") if backend == "sqlite" else "",
+        "supported_clients": list(CLIENTS),
+    }, indent=2))
     return 0
 
 
@@ -261,15 +321,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Persistent project memory for MCP-compatible AI agents",
     )
     sub = parser.add_subparsers(dest="command")
-    init = sub.add_parser("init", help="Create .env and one or more MCP client configurations")
+    init = sub.add_parser("init", help="Configure storage and MCP clients")
     init.add_argument("--env", default=".env")
     init.add_argument("--output-dir", default="persistent-memory-mcp-config")
-    init.add_argument(
-        "--clients",
-        help="Comma-separated clients: codex,claude,opencode,antigravity, or all",
-    )
+    init.add_argument("--clients", help="codex,claude,opencode,antigravity, or all")
+    init.add_argument("--backend", choices=BACKENDS)
+    init.add_argument("--sqlite-path")
     init.add_argument("--supabase-url")
     init.add_argument("--supabase-key")
+    init.add_argument("--database-url")
     init.add_argument("--owner-id")
     init.add_argument("--skip-connection-test", action="store_true")
     init.set_defaults(func=command_init)
