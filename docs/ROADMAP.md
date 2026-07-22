@@ -24,10 +24,12 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 - [x] Storage-adapter interface
 - [x] SQLite schema and initialization
 - [x] Local health check and scoped destructive operations
-- [ ] Backend selection in `memory-mcp init`
-- [ ] Connect `src/server.py` to the storage adapter
-- [ ] Import/export between SQLite and Supabase
-- [ ] Backend parity tests across real server handlers
+- [x] Backend selection in `memory-mcp init`
+- [x] `MEMORY_BACKEND` and `SQLITE_PATH` client configuration
+- [x] Connect the existing MCP service layer through a SQLite-compatible client facade
+- [x] Import/export compatibility through the existing memory bundle tools
+- [x] Backend query-shape and CLI parity tests
+- [x] Package the SQLite schema in built distributions
 
 ## PR #4 — Safe automatic client installation
 
