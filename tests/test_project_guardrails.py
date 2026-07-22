@@ -36,7 +36,7 @@ def _manifest() -> dict[str, object]:
                 "type": "ssh",
                 "path_variable": "OVH_SSH_KEY_PATH",
                 "host_variable": "OVH_HOST",
-                "private_key": "-----BEGIN OPENSSH PRIVATE KEY----- secret",
+                "private_key": "__REDACTED__",
             }
         ],
     }
@@ -44,7 +44,7 @@ def _manifest() -> dict[str, object]:
 
 def test_secret_values_are_never_retained() -> None:
     cleaned = sanitize_credential_reference(
-        {"type": "ssh", "path_variable": "SSH_KEY_PATH", "token": "secret"}
+        {"type": "ssh", "path_variable": "SSH_KEY_PATH", "token": "__REDACTED__"}
     )
     assert "token" not in cleaned
     assert cleaned["path_variable"] == "SSH_KEY_PATH"
