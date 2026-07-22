@@ -33,11 +33,18 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 
 ## PR #4 — Safe automatic client installation
 
-- [ ] Detect Codex, Claude Code, OpenCode and Antigravity configuration paths
-- [ ] Back up existing files before changes
-- [ ] Merge without removing unrelated MCP servers
-- [ ] Validate TOML/JSON after writes
-- [ ] Add uninstall and rollback commands
+- [x] Detect Codex, Claude Code, OpenCode and Antigravity configuration paths
+- [x] Platform-specific path handling and explicit path overrides
+- [x] Back up existing files before changes
+- [x] Merge without removing unrelated MCP servers or preferences
+- [x] Validate TOML and JSON before replacement
+- [x] Atomic configuration writes
+- [x] Installation manifest
+- [x] `install`, `uninstall`, `backups` and `rollback` commands
+- [x] Optional installation from `memory-mcp init`
+- [x] Interactive confirmation and `--yes` automation mode
+- [x] Deterministic uninstall of only the managed MCP entry
+- [x] End-to-end safety tests for merge, backup, manifest, uninstall and rollback
 
 ## PR #5 — Token-efficient context engine
 
