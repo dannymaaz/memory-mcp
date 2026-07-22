@@ -40,11 +40,22 @@ def test_local_embedding_is_deterministic_and_private() -> None:
 
 
 def test_hybrid_search_prioritizes_relevant_memory() -> None:
-    results, metrics = hybrid_search("fix authentication rls", _items(), limit=2)
+    results, metrics = hybrid_search(
+        "fix authentication rls",
+        _items(),
+        limit=2,
+        minimum_score=0.0,
+    )
     assert results[0].item["id"] == "auth"
     assert metrics.provider == "local"
     assert metrics.returned == 2
     assert metrics.embedding_calls <= len(_items()) + 1
+
+
+def test_default_minimum_score_filters_unrelated_memory() -> None:
+    results, metrics = hybrid_search("fix authentication rls", _items(), limit=3)
+    assert [result.item["id"] for result in results] == ["auth"]
+    assert metrics.returned == 1
 
 
 def test_external_provider_falls_back_without_exposing_failure() -> None:
