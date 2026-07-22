@@ -52,12 +52,13 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 - [x] Configurable token budgets
 - [x] Short, operational and detailed memory layers
 - [x] Relevance ranking and exact deduplication
-- [ ] Automatic session/checkpoint compression
+- [x] Automatic session/checkpoint compression
 - [x] Token-use and token-savings measurements
 - [x] Provenance included in returned context
 - [x] Safe exclusion of expired and untrusted memory
-- [ ] Integrate intent and layer controls into MCP tool handlers
-- [ ] Add benchmark fixtures and savings regression thresholds
+- [x] Context controls exposed through optimizer request metadata and MCP runtime environment
+- [x] Benchmark fixtures and savings regression thresholds
+- [x] Compatibility tests for the existing optimizer interface
 
 ## PR #6 — Embeddings and hybrid search
 
