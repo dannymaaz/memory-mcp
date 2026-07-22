@@ -3,22 +3,24 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "memory-mcp"
-version = "0.1.0"
-description = "Persistent Project Memory for AI Models"
+name = "persistent-memory-mcp"
+version = "0.2.0"
+description = "Persistent, cross-client project memory for AI coding agents and MCP-compatible tools"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Danny Maaz" }]
 keywords = [
-  "Memory MCP",
-  "AI project memory",
-  "Supabase persistent context",
+  "persistent memory MCP",
+  "MCP server",
   "AI agent memory",
+  "AI coding assistant memory",
+  "Claude Code memory",
+  "Codex memory",
   "OpenCode memory",
-  "Claude Code CLI memory",
-  "Qwen Code integration",
-  "Codex plugin memory"
+  "Supabase MCP",
+  "project context",
+  "Model Context Protocol"
 ]
 dependencies = [
   "mcp>=0.1.0",
@@ -28,25 +30,36 @@ dependencies = [
   "psycopg2-binary>=2.9.0"
 ]
 classifiers = [
+  "Development Status :: 4 - Beta",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
-  "Topic :: Software Development :: Libraries"
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Version Control :: Git"
 ]
 
+[project.urls]
+Homepage = "https://dannymaaz.github.io/memory-mcp/"
+Documentation = "https://dannymaaz.github.io/memory-mcp/"
+Repository = "https://github.com/dannymaaz/memory-mcp"
+Issues = "https://github.com/dannymaaz/memory-mcp/issues"
+
 [project.scripts]
-memory-mcp = "src.server:main"
+memory-mcp = "persistent_memory_mcp.cli:main"
+persistent-memory-mcp = "persistent_memory_mcp.cli:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["src", "src.*", "tests", "tests.*"]
+include = ["src", "src.*", "persistent_memory_mcp", "persistent_memory_mcp.*"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310", "py311"]
+target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.flake8]
 max-line-length = 100
