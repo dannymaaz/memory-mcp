@@ -14,14 +14,36 @@ DEFAULT_BUDGETS = {"short": 800, "operational": 2400, "detailed": 6000}
 LAYER_FIELDS = {
     "short": ("project", "warnings", "tasks", "decisions"),
     "operational": (
-        "project", "warnings", "tasks", "decisions", "sessions", "checkpoints", "files", "file_memory"
+        "project",
+        "warnings",
+        "tasks",
+        "decisions",
+        "sessions",
+        "checkpoints",
+        "files",
+        "file_memory",
     ),
     "detailed": (
-        "project", "warnings", "tasks", "decisions", "sessions", "checkpoints", "files", "file_memory", "timeline"
+        "project",
+        "warnings",
+        "tasks",
+        "decisions",
+        "sessions",
+        "checkpoints",
+        "files",
+        "file_memory",
+        "timeline",
     ),
 }
 LONG_TEXT_FIELDS = (
-    "content", "details", "summary", "description", "completed_work", "remaining_work", "next_step", "state"
+    "content",
+    "details",
+    "summary",
+    "description",
+    "completed_work",
+    "remaining_work",
+    "next_step",
+    "state",
 )
 
 
@@ -128,8 +150,18 @@ def compress_memory_item(
 
     max_chars = max_tokens * 3
     protected = {
-        "id", "project_id", "owner_id", "title", "status", "priority", "severity",
-        "interface", "created_at", "updated_at", "expires_at", "provenance",
+        "id",
+        "project_id",
+        "owner_id",
+        "title",
+        "status",
+        "priority",
+        "severity",
+        "interface",
+        "created_at",
+        "updated_at",
+        "expires_at",
+        "provenance",
     }
     result = {
         key: value
@@ -183,13 +215,33 @@ def score_item(item: Mapping[str, Any], intent: str = "", now: datetime | None =
     return score
 
 
-def _iter_items(context: Mapping[str, Any], fields: Iterable[str]) -> Iterable[tuple[str, dict[str, Any]]]:
+def _iter_items(
+    context: Mapping[str, Any],
+    fields: Iterable[str],
+) -> Iterable[tuple[str, dict[str, Any]]]:
     for field in fields:
         value = context.get(field)
         if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             for item in value:
                 if isinstance(item, Mapping):
                     yield field, dict(item)
+
+
+def _render_selected(
+    project: dict[str, Any] | None,
+    selected: Sequence[tuple[str, dict[str, Any]]],
+    policy: Mapping[str, Any],
+    metrics: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    if project is not None:
+        output["project"] = dict(project)
+    for field, item in selected:
+        output.setdefault(field, []).append(dict(item))
+    output["context_policy"] = dict(policy)
+    if metrics is not None:
+        output["context_metrics"] = dict(metrics)
+    return output
 
 
 def build_context(
@@ -203,7 +255,7 @@ def build_context(
     item_budget: int = 180,
     now: datetime | None = None,
 ) -> ContextResult:
-    """Build compact context while preserving provenance and safety metadata."""
+    """Build compact context while enforcing the final serialized token budget."""
     normalized_layer = layer.strip().lower()
     if normalized_layer not in LAYER_FIELDS:
         raise ValueError(f"Unknown context layer: {layer}")
@@ -213,9 +265,15 @@ def build_context(
 
     current = now or datetime.now(UTC)
     original_tokens = estimate_tokens(context)
-    output: dict[str, Any] = {}
-    if isinstance(context.get("project"), Mapping):
-        output["project"] = dict(context["project"])
+    project = dict(context["project"]) if isinstance(context.get("project"), Mapping) else None
+    policy = {
+        "layer": normalized_layer,
+        "budget": token_budget,
+        "intent": intent,
+        "excluded_untrusted": not include_untrusted,
+        "compression": "deterministic-extractive" if compress_oversized else "disabled",
+        "item_budget": item_budget,
+    }
 
     candidates: list[tuple[float, str, dict[str, Any]]] = []
     seen: set[str] = set()
@@ -230,7 +288,11 @@ def build_context(
             dropped += 1
             continue
         seen.add(fingerprint)
-        if compress_oversized and field in {"sessions", "checkpoints"} and estimate_tokens(item) > item_budget:
+        if (
+            compress_oversized
+            and field in {"sessions", "checkpoints"}
+            and estimate_tokens(item) > item_budget
+        ):
             item = compress_memory_item(item, item_type=field.rstrip("s"), max_tokens=item_budget)
             compressed += 1
         candidates.append((score_item(item, intent, current), field, item))
@@ -242,36 +304,75 @@ def build_context(
         ),
         reverse=True,
     )
-    selected = 0
+
+    selected: list[tuple[str, dict[str, Any]]] = []
+    placeholder_metrics = {
+        "original_tokens": original_tokens,
+        "returned_tokens": token_budget,
+        "saved_tokens": max(0, original_tokens - token_budget),
+        "savings_percent": 0.0,
+        "selected_items": len(candidates),
+        "dropped_items": dropped,
+        "compressed_items": compressed,
+    }
     for score, field, item in candidates:
         annotated = dict(item)
         annotated["context_score"] = round(score, 3)
         metadata = item.get("metadata")
         metadata_provenance = metadata.get("provenance") if isinstance(metadata, Mapping) else None
         annotated.setdefault("provenance", item.get("provenance") or metadata_provenance)
-        trial = {**output, field: [*output.get(field, []), annotated]}
+        trial = _render_selected(
+            project,
+            [*selected, (field, annotated)],
+            policy,
+            placeholder_metrics,
+        )
         if estimate_tokens(trial) > token_budget:
             dropped += 1
             continue
-        output = trial
-        selected += 1
+        selected.append((field, annotated))
 
-    output["context_policy"] = {
-        "layer": normalized_layer,
-        "budget": token_budget,
-        "intent": intent,
-        "excluded_untrusted": not include_untrusted,
-        "compression": "deterministic-extractive" if compress_oversized else "disabled",
-        "item_budget": item_budget,
-    }
-    returned_tokens = estimate_tokens(output)
-    saved = max(0, original_tokens - returned_tokens)
+    while True:
+        provisional = _render_selected(project, selected, policy)
+        returned_tokens = estimate_tokens(provisional)
+        saved = max(0, original_tokens - returned_tokens)
+        metrics_data = {
+            "original_tokens": original_tokens,
+            "returned_tokens": returned_tokens,
+            "saved_tokens": saved,
+            "savings_percent": round((saved / original_tokens) * 100, 2)
+            if original_tokens
+            else 0.0,
+            "selected_items": len(selected),
+            "dropped_items": dropped,
+            "compressed_items": compressed,
+        }
+        output = _render_selected(project, selected, policy, metrics_data)
+        final_tokens = estimate_tokens(output)
+        if final_tokens <= token_budget or not selected:
+            metrics_data["returned_tokens"] = final_tokens
+            metrics_data["saved_tokens"] = max(0, original_tokens - final_tokens)
+            metrics_data["savings_percent"] = (
+                round((metrics_data["saved_tokens"] / original_tokens) * 100, 2)
+                if original_tokens
+                else 0.0
+            )
+            output["context_metrics"] = metrics_data
+            break
+        selected.pop()
+        dropped += 1
+
+    final_tokens = estimate_tokens(output)
     metrics = ContextMetrics(
         original_tokens=original_tokens,
-        returned_tokens=returned_tokens,
-        saved_tokens=saved,
-        savings_percent=round((saved / original_tokens) * 100, 2) if original_tokens else 0.0,
-        selected_items=selected,
+        returned_tokens=final_tokens,
+        saved_tokens=max(0, original_tokens - final_tokens),
+        savings_percent=(
+            round((max(0, original_tokens - final_tokens) / original_tokens) * 100, 2)
+            if original_tokens
+            else 0.0
+        ),
+        selected_items=len(selected),
         dropped_items=dropped,
         compressed_items=compressed,
     )
