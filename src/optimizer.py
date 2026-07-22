@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from persistent_memory_mcp.context_engine import build_context, estimate_tokens
@@ -33,6 +34,25 @@ class ContextOptimizer:
             project["guardrails"] = compact_guardrails(manifest)
             prepared["project"] = project
         return prepared
+
+    def _essential_metadata(self, context: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep only server-control metadata that must survive optimization."""
+        metadata = context.get("metadata")
+        if not isinstance(metadata, Mapping):
+            return {}
+        allowed = {
+            "interface",
+            "recommended_model",
+            "repo",
+            "retention_policy",
+            "project_id",
+            "workspace_id",
+        }
+        return {
+            key: metadata[key]
+            for key in allowed
+            if key in metadata and metadata[key] not in (None, "", [], {})
+        }
 
     def _resolve_options(
         self,
@@ -68,6 +88,58 @@ class ContextOptimizer:
         }
         return resolved_intent, resolved_layer, resolved_budget, resolved_untrusted
 
+    def _optimize(
+        self,
+        context: dict[str, Any],
+        *,
+        intent: str,
+        layer: str,
+        limit: int,
+        include_untrusted: bool,
+    ) -> tuple[dict[str, Any], Any]:
+        """Build context while reserving space for essential server metadata."""
+        prepared = self._prepare_context(context)
+        metadata = self._essential_metadata(prepared)
+        metadata_payload = {"metadata": metadata} if metadata else {}
+        reserve = estimate_tokens(metadata_payload) + (4 if metadata else 0)
+        engine_limit = max(128, limit - reserve)
+        result = build_context(
+            prepared,
+            intent=intent,
+            layer=layer,
+            budget=engine_limit,
+            include_untrusted=include_untrusted,
+        )
+        optimized = dict(result.context)
+        if metadata:
+            optimized["metadata"] = metadata
+
+        # A very small user budget may leave insufficient room for metadata.
+        # Remove lowest-priority selected items until the complete response fits.
+        removable_fields = (
+            "timeline",
+            "sessions",
+            "checkpoints",
+            "file_memory",
+            "files",
+            "decisions",
+            "tasks",
+            "warnings",
+        )
+        while estimate_tokens(optimized) > limit:
+            removed = False
+            for field in removable_fields:
+                values = optimized.get(field)
+                if isinstance(values, list) and values:
+                    values.pop()
+                    if not values:
+                        optimized.pop(field, None)
+                    removed = True
+                    break
+            if not removed:
+                break
+        return optimized, result
+
     def trim_context(
         self,
         context: dict[str, Any],
@@ -85,13 +157,14 @@ class ContextOptimizer:
             max_tokens=max_tokens,
             include_untrusted=include_untrusted,
         )
-        return build_context(
-            self._prepare_context(context),
+        optimized, _ = self._optimize(
+            context,
             intent=resolved_intent,
             layer=resolved_layer,
-            budget=max_tokens,
+            limit=max_tokens,
             include_untrusted=resolved_untrusted,
-        ).context
+        )
+        return optimized
 
     def optimize_for_interface(
         self,
@@ -116,16 +189,15 @@ class ContextOptimizer:
             requested_budget
             or self.INTERFACE_LIMITS.get(interface_key, self.INTERFACE_LIMITS["native"])
         )
-        result = build_context(
-            self._prepare_context(context),
+        optimized, result = self._optimize(
+            context,
             intent=resolved_intent,
             layer=resolved_layer,
-            budget=limit,
+            limit=limit,
             include_untrusted=resolved_untrusted,
         )
-        optimized = dict(result.context)
         optimized["interface"] = interface_key
-        optimized["token_estimate"] = result.metrics.returned_tokens
+        optimized["token_estimate"] = estimate_tokens(optimized)
         guardrails_loaded = bool(
             isinstance(optimized.get("project"), dict)
             and optimized["project"].get("guardrails")
@@ -140,8 +212,13 @@ class ContextOptimizer:
                 if interface_key in {"opencode", "claude-code", "qwen-code", "codex"}
                 else "reasoning"
             ),
-            "saved_tokens": result.metrics.saved_tokens,
-            "savings_percent": result.metrics.savings_percent,
+            "saved_tokens": max(0, estimate_tokens(context) - estimate_tokens(optimized)),
+            "savings_percent": round(
+                max(0, estimate_tokens(context) - estimate_tokens(optimized))
+                / max(1, estimate_tokens(context))
+                * 100,
+                2,
+            ),
             "compressed_items": result.metrics.compressed_items,
             "guardrails_loaded": guardrails_loaded,
         }
