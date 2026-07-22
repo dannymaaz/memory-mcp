@@ -100,5 +100,5 @@ def test_unknown_table_is_rejected(tmp_path: Path) -> None:
 
 
 def test_unknown_backend_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Unsupported backend"):
+    with pytest.raises(ValueError, match="MEMORY_BACKEND"):
         create_storage("unknown")
