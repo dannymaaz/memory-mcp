@@ -7,10 +7,10 @@ import pytest
 from persistent_memory_mcp.context_engine import (
     DEFAULT_BUDGETS,
     build_context,
+    compress_memory_item,
     estimate_tokens,
     score_item,
 )
-
 
 NOW = datetime(2026, 7, 22, 21, 0, tzinfo=UTC)
 
@@ -35,11 +35,7 @@ def _context() -> dict[str, object]:
                 "priority": "high",
                 "updated_at": NOW.isoformat(),
             },
-            {
-                "id": "task-1",
-                "title": "Duplicate task",
-                "status": "pending",
-            },
+            {"id": "task-1", "title": "Duplicate task", "status": "pending"},
             {
                 "id": "task-expired",
                 "title": "Expired task",
@@ -61,10 +57,20 @@ def _context() -> dict[str, object]:
         "sessions": [
             {
                 "id": f"session-{index}",
-                "summary": "Routine implementation notes " * 20,
+                "summary": "Routine implementation notes. " * 80,
+                "remaining_work": "Complete tests and update documentation. " * 40,
                 "created_at": (NOW - timedelta(days=index)).isoformat(),
+                "metadata": {"current_goal": "Ship token-efficient context"},
             }
             for index in range(8)
+        ],
+        "checkpoints": [
+            {
+                "id": "checkpoint-1",
+                "title": "Architecture checkpoint",
+                "content": "Detailed architecture state. " * 120,
+                "created_at": NOW.isoformat(),
+            }
         ],
     }
 
@@ -88,6 +94,15 @@ def test_intent_and_urgency_raise_score() -> None:
     )
 
 
+def test_compress_memory_item_preserves_operational_fields() -> None:
+    item = _context()["sessions"][0]
+    compressed = compress_memory_item(item, item_type="session", max_tokens=120)
+    assert compressed["id"] == item["id"]
+    assert compressed["summary"].endswith("…")
+    assert compressed["compression"]["strategy"] == "deterministic-extractive"
+    assert estimate_tokens(compressed) < estimate_tokens(item)
+
+
 def test_build_context_respects_budget_and_reports_savings() -> None:
     result = build_context(
         _context(),
@@ -99,6 +114,7 @@ def test_build_context_respects_budget_and_reports_savings() -> None:
     assert estimate_tokens(result.context) <= 700
     assert result.metrics.returned_tokens <= result.metrics.original_tokens
     assert result.metrics.saved_tokens > 0
+    assert result.metrics.compressed_items > 0
     assert result.context["context_policy"]["intent"] == "continue authentication migration"
 
 
@@ -106,7 +122,7 @@ def test_build_context_filters_expired_untrusted_and_duplicates() -> None:
     result = build_context(_context(), layer="detailed", budget=2000, now=NOW)
     selected_ids = {
         item["id"]
-        for key in ("warnings", "tasks", "decisions", "sessions")
+        for key in ("warnings", "tasks", "decisions", "sessions", "checkpoints")
         for item in result.context.get(key, [])
     }
     assert "task-expired" not in selected_ids
@@ -129,13 +145,28 @@ def test_include_untrusted_is_explicit() -> None:
     )
 
 
+def test_benchmark_fixture_maintains_minimum_savings() -> None:
+    result = build_context(
+        _context(),
+        intent="ship authentication and context engine",
+        layer="operational",
+        budget=900,
+        now=NOW,
+    )
+    assert result.metrics.savings_percent >= 70.0
+    assert result.metrics.returned_tokens <= 900
+    assert result.metrics.selected_items >= 3
+
+
 def test_layers_have_increasing_default_budgets() -> None:
     assert DEFAULT_BUDGETS["short"] < DEFAULT_BUDGETS["operational"]
     assert DEFAULT_BUDGETS["operational"] < DEFAULT_BUDGETS["detailed"]
 
 
-def test_invalid_layer_and_tiny_budget_are_rejected() -> None:
+def test_invalid_layer_and_tiny_budgets_are_rejected() -> None:
     with pytest.raises(ValueError, match="Unknown context layer"):
         build_context({}, layer="huge")
     with pytest.raises(ValueError, match="at least 128"):
         build_context({}, budget=64)
+    with pytest.raises(ValueError, match="at least 48"):
+        compress_memory_item({}, max_tokens=20)
