@@ -48,14 +48,16 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 
 ## PR #5 — Token-efficient context engine
 
-- [ ] Intent-aware context builder
-- [ ] Configurable token budgets
-- [ ] Short, operational and detailed memory layers
-- [ ] Relevance ranking and deduplication
+- [x] Intent-aware context builder
+- [x] Configurable token budgets
+- [x] Short, operational and detailed memory layers
+- [x] Relevance ranking and exact deduplication
 - [ ] Automatic session/checkpoint compression
-- [ ] Token-use and token-savings measurements
-- [ ] Provenance included in returned context
-- [ ] Safe exclusion of expired, untrusted or irrelevant memory
+- [x] Token-use and token-savings measurements
+- [x] Provenance included in returned context
+- [x] Safe exclusion of expired and untrusted memory
+- [ ] Integrate intent and layer controls into MCP tool handlers
+- [ ] Add benchmark fixtures and savings regression thresholds
 
 ## PR #6 — Embeddings and hybrid search
 
