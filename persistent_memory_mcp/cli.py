@@ -10,6 +10,13 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ENV_KEYS = ("SUPABASE_URL", "SUPABASE_KEY", "OWNER_ID")
+CLIENTS = ("codex", "claude", "opencode", "antigravity")
+CLIENT_LABELS = {
+    "codex": "OpenAI Codex",
+    "claude": "Claude Code",
+    "opencode": "OpenCode",
+    "antigravity": "Google Antigravity",
+}
 
 
 def _read_env(path: Path) -> dict[str, str]:
@@ -26,6 +33,7 @@ def _read_env(path: Path) -> dict[str, str]:
 
 
 def _write_env(path: Path, values: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "# Persistent Memory MCP configuration\n"
         f"SUPABASE_URL={values['SUPABASE_URL']}\n"
@@ -37,21 +45,118 @@ def _write_env(path: Path, values: dict[str, str]) -> None:
     )
 
 
-def _config_block(values: dict[str, str]) -> dict[str, object]:
+def _server_config(values: dict[str, str]) -> dict[str, object]:
     return {
-        "mcpServers": {
-            "persistent-memory-mcp": {
-                "command": "memory-mcp",
-                "env": {key: values[key] for key in ENV_KEYS},
-            }
-        }
+        "command": "memory-mcp",
+        "env": {key: values[key] for key in ENV_KEYS},
     }
+
+
+def _config_block(values: dict[str, str]) -> dict[str, object]:
+    return {"mcpServers": {"persistent-memory-mcp": _server_config(values)}}
+
+
+def _normalize_clients(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    tokens = [token.strip().lower() for token in raw.split(",") if token.strip()]
+    if "all" in tokens:
+        return list(CLIENTS)
+    invalid = sorted(set(tokens) - set(CLIENTS))
+    if invalid:
+        raise ValueError(
+            f"Unknown client(s): {', '.join(invalid)}. Choose from: {', '.join(CLIENTS)}, all"
+        )
+    return list(dict.fromkeys(tokens))
+
+
+def _prompt_clients() -> list[str]:
+    print("\nWhere do you want to use Persistent Memory MCP?")
+    for index, client in enumerate(CLIENTS, start=1):
+        print(f"  {index}. {CLIENT_LABELS[client]}")
+    print("  5. All clients")
+    print("Select one or more, separated by commas (example: 1,2,4).")
+    while True:
+        answer = input("Clients [5]: ").strip() or "5"
+        if answer.lower() == "all" or "5" in {item.strip() for item in answer.split(",")}:
+            return list(CLIENTS)
+        try:
+            indexes = [int(item.strip()) for item in answer.split(")")]
+        except ValueError:
+            try:
+                return _normalize_clients(answer)
+            except ValueError as exc:
+                print(f"! {exc}")
+                continue
+        if all(1 <= index <= len(CLIENTS) for index in indexes):
+            return list(dict.fromkeys(CLIENTS[index - 1] for index in indexes))
+        print("! Enter client numbers from 1 to 5, names separated by commas, or 'all'.")
+
+
+def _codex_toml(values: dict[str, str]) -> str:
+    env_items = ", ".join(
+        f'{json.dumps(key)} = {json.dumps(values[key])}' for key in ENV_KEYS
+    )
+    return (
+        "# Merge this block into ~/.codex/config.toml\n"
+        "[mcp_servers.persistent-memory-mcp]\n"
+        'command = "memory-mcp"\n'
+        f"env = {{ {env_items} }}\n"
+    )
+
+
+def _opencode_config(values: dict[str, str]) -> dict[str, object]:
+    return {
+        "$schema": "https://opencode.ai/config.json",
+        "mcp": {
+            "persistent-memory-mcp": {
+                "type": "local",
+                "command": ["memory-mcp"],
+                "environment": {key: values[key] for key in ENV_KEYS},
+                "enabled": True,
+            }
+        },
+    }
+
+
+def _client_payload(client: str, values: dict[str, str]) -> tuple[str, str]:
+    if client == "codex":
+        return "codex-config.toml", _codex_toml(values)
+    if client == "claude":
+        payload = {
+            "type": "stdio",
+            "command": "memory-mcp",
+            "args": [],
+            "env": {key: values[key] for key in ENV_KEYS},
+        }
+        return "claude-server.json", json.dumps(payload, indent=2) + "\n"
+    if client == "opencode":
+        return "opencode.json", json.dumps(_opencode_config(values), indent=2) + "\n"
+    if client == "antigravity":
+        return "antigravity-mcp_config.json", json.dumps(_config_block(values), indent=2) + "\n"
+    raise ValueError(f"Unsupported client: {client}")
+
+
+def _write_client_configs(
+    output_dir: Path, clients: list[str], values: dict[str, str]
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    written: dict[str, Path] = {}
+    for client in clients:
+        filename, content = _client_payload(client, values)
+        path = output_dir / filename
+        path.write_text(content, encoding="utf-8")
+        written[client] = path
+    return written
 
 
 def _check_supabase(url: str, key: str) -> tuple[bool, str]:
     if not url.startswith("https://") or not key:
         return False, "Supabase URL or key is missing"
-    request = Request(f"{url.rstrip('/')}/rest/v1/", headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    request = Request(
+        f"{url.rstrip('/')}/rest/v1/",
+        headers={"apikey": key, "Authorization": f"Bearer {key}"},
+    )
     try:
         with urlopen(request, timeout=8) as response:  # nosec B310 - user supplied HTTPS endpoint
             return response.status < 500, f"HTTP {response.status}"
@@ -67,24 +172,49 @@ def command_init(args: argparse.Namespace) -> int:
     url = args.supabase_url or current.get("SUPABASE_URL") or input("Supabase URL: ").strip()
     key = args.supabase_key or current.get("SUPABASE_KEY") or input("Supabase anon key: ").strip()
     owner = args.owner_id or current.get("OWNER_ID") or f"owner-{secrets.token_hex(6)}"
-    values = {"SUPABASE_URL": url, "SUPABASE_KEY": key, "OWNER_ID": owner, "DATABASE_URL": current.get("DATABASE_URL", "")}
+    values = {
+        "SUPABASE_URL": url,
+        "SUPABASE_KEY": key,
+        "OWNER_ID": owner,
+        "DATABASE_URL": current.get("DATABASE_URL", ""),
+    }
     _write_env(env_path, values)
-    config_path = Path(args.config).expanduser().resolve()
-    config_path.write_text(json.dumps(_config_block(values), indent=2) + "\n", encoding="utf-8")
+
+    try:
+        clients = _normalize_clients(args.clients)
+    except ValueError as exc:
+        print(f"✗ {exc}")
+        return 2
+    if not clients:
+        clients = _prompt_clients() if sys.stdin.isatty() else list(CLIENTS)
+
+    output_dir = Path(args.output_dir).expanduser().resolve()
+    written = _write_client_configs(output_dir, clients, values)
     ok, detail = _check_supabase(url, key) if not args.skip_connection_test else (True, "skipped")
+
     print(f"✓ Environment written to {env_path}")
-    print(f"✓ MCP config written to {config_path}")
-    print(f"{'✓' if ok else '!' } Supabase connection: {detail}")
-    print("Next: run schema.sql in Supabase, then add the generated config to your MCP client.")
+    for client, path in written.items():
+        print(f"✓ {CLIENT_LABELS[client]} configuration written to {path}")
+    print(f"{'✓' if ok else '!'} Supabase connection: {detail}")
+    print("Next: run schema.sql in Supabase, then merge each generated file into its client config.")
+    if "claude" in written:
+        print(
+            "Claude Code shortcut: claude mcp add-json --scope user "
+            "persistent-memory-mcp \"$(cat claude-server.json)\""
+        )
     return 0 if ok else 1
 
 
 def command_doctor(args: argparse.Namespace) -> int:
     env_path = Path(args.env).expanduser().resolve()
-    values = {**_read_env(env_path), **{key: os.getenv(key, "") for key in ENV_KEYS if os.getenv(key)}}
+    values = {
+        **_read_env(env_path),
+        **{key: os.getenv(key, "") for key in ENV_KEYS if os.getenv(key)},
+    }
     failures = 0
     print("Persistent Memory MCP doctor")
-    print(f"{'✓' if sys.version_info >= (3, 10) else '✗'} Python {sys.version.split()[0]}")
+    print(f"{'✓' if sys.version_info >= (3, 11) else '✗'} Python {sys.version.split()[0]}")
+    failures += int(sys.version_info < (3, 11))
     for key in ENV_KEYS:
         present = bool(values.get(key))
         print(f"{'✓' if present else '✗'} {key}")
@@ -98,8 +228,22 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    values = {**_read_env(Path(args.env).expanduser()), **{key: os.getenv(key, "") for key in ENV_KEYS if os.getenv(key)}}
-    print(json.dumps({"package": "persistent-memory-mcp", "configured": all(values.get(k) for k in ENV_KEYS), "owner_id": values.get("OWNER_ID", ""), "backend": "supabase"}, indent=2))
+    values = {
+        **_read_env(Path(args.env).expanduser()),
+        **{key: os.getenv(key, "") for key in ENV_KEYS if os.getenv(key)},
+    }
+    print(
+        json.dumps(
+            {
+                "package": "persistent-memory-mcp",
+                "configured": all(values.get(key) for key in ENV_KEYS),
+                "owner_id": values.get("OWNER_ID", ""),
+                "backend": "supabase",
+                "supported_clients": list(CLIENTS),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -111,11 +255,18 @@ def command_serve(_args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="memory-mcp", description="Persistent project memory for MCP-compatible AI agents")
+    parser = argparse.ArgumentParser(
+        prog="memory-mcp",
+        description="Persistent project memory for MCP-compatible AI agents",
+    )
     sub = parser.add_subparsers(dest="command")
-    init = sub.add_parser("init", help="Create .env and MCP client configuration")
+    init = sub.add_parser("init", help="Create .env and one or more MCP client configurations")
     init.add_argument("--env", default=".env")
-    init.add_argument("--config", default="persistent-memory-mcp.json")
+    init.add_argument("--output-dir", default="persistent-memory-mcp-config")
+    init.add_argument(
+        "--clients",
+        help="Comma-separated clients: codex,claude,opencode,antigravity, or all",
+    )
     init.add_argument("--supabase-url")
     init.add_argument("--supabase-key")
     init.add_argument("--owner-id")
