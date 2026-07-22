@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   test:
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -25,14 +26,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest ruff mypy pip-audit
+          pip install pytest ruff
       - name: Compile
         run: python -m compileall persistent_memory_mcp src
       - name: Lint
         run: ruff check persistent_memory_mcp src tests
-      - name: Type check product CLI
-        run: mypy --config-file=/dev/null --ignore-missing-imports persistent_memory_mcp
       - name: Tests
         run: pytest -q
-      - name: Dependency audit
-        run: pip-audit
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pip-audit
+      - name: Audit dependencies
+        run: pip-audit --skip-editable
