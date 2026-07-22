@@ -72,3 +72,40 @@ def test_environment_defaults_are_supported(monkeypatch) -> None:
     optimized = optimizer.optimize_for_interface({"project": {}}, "native")
     assert optimized["strategy"]["layer"] == "short"
     assert optimized["strategy"]["limit"] == 256
+
+
+def test_project_guardrails_are_always_loaded_compactly() -> None:
+    optimizer = ContextOptimizer()
+    optimized = optimizer.optimize_for_interface(
+        {
+            "project": {"id": "demo"},
+            "project_guardrails": {
+                "project": {
+                    "project_id": "demo",
+                    "repository": "dannymaaz/demo",
+                },
+                "critical_rules": ["Never deploy the wrong service"],
+                "services": [
+                    {
+                        "service_id": "bot-a",
+                        "deployment_target": "vps-a",
+                        "restart_command": "systemctl restart bot-a",
+                    }
+                ],
+                "credential_references": [
+                    {
+                        "type": "ssh",
+                        "path_variable": "SSH_KEY_PATH",
+                        "private_key": "secret-value",
+                    }
+                ],
+            },
+        },
+        "codex",
+        layer="short",
+        max_tokens=800,
+    )
+    guardrails = optimized["project"]["guardrails"]
+    assert optimized["strategy"]["guardrails_loaded"] is True
+    assert guardrails["services"][0]["service_id"] == "bot-a"
+    assert "private_key" not in guardrails["credential_references"][0]
