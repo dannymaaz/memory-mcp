@@ -13,8 +13,25 @@ WORD_RE = re.compile(r"[a-z0-9_./-]+", re.IGNORECASE)
 DEFAULT_BUDGETS = {"short": 800, "operational": 2400, "detailed": 6000}
 LAYER_FIELDS = {
     "short": ("project", "warnings", "tasks", "decisions"),
-    "operational": ("project", "warnings", "tasks", "decisions", "sessions", "checkpoints", "files"),
-    "detailed": ("project", "warnings", "tasks", "decisions", "sessions", "checkpoints", "files", "timeline"),
+    "operational": (
+        "project",
+        "warnings",
+        "tasks",
+        "decisions",
+        "sessions",
+        "checkpoints",
+        "files",
+    ),
+    "detailed": (
+        "project",
+        "warnings",
+        "tasks",
+        "decisions",
+        "sessions",
+        "checkpoints",
+        "files",
+        "timeline",
+    ),
 }
 
 
@@ -79,7 +96,9 @@ def _is_expired(item: Mapping[str, Any], now: datetime) -> bool:
 def _is_trusted(item: Mapping[str, Any]) -> bool:
     metadata = item.get("metadata")
     if isinstance(metadata, Mapping):
-        if metadata.get("untrusted") is True or metadata.get("prompt_injection_detected") is True:
+        if metadata.get("untrusted") is True:
+            return False
+        if metadata.get("prompt_injection_detected") is True:
             return False
     return item.get("trusted", True) is not False
 
@@ -95,7 +114,20 @@ def _fingerprint(item: Mapping[str, Any]) -> str:
     return "text:" + " ".join(sorted(_terms(text)))
 
 
-def score_item(item: Mapping[str, Any], intent: str = "", now: datetime | None = None) -> float:
+def _provenance(item: Mapping[str, Any]) -> Any:
+    if item.get("provenance") is not None:
+        return item.get("provenance")
+    metadata = item.get("metadata")
+    if isinstance(metadata, Mapping):
+        return metadata.get("provenance")
+    return None
+
+
+def score_item(
+    item: Mapping[str, Any],
+    intent: str = "",
+    now: datetime | None = None,
+) -> float:
     """Score one memory by intent overlap, urgency, recency and status."""
     current = now or datetime.now(UTC)
     intent_terms = _terms(intent)
@@ -105,8 +137,18 @@ def score_item(item: Mapping[str, Any], intent: str = "", now: datetime | None =
     priority = str(item.get("priority", "")).lower()
     severity = str(item.get("severity", "")).lower()
     status = str(item.get("status", "")).lower()
-    score += {"critical": 4.0, "high": 3.0, "medium": 1.5, "low": 0.5}.get(priority, 0.0)
-    score += {"critical": 5.0, "high": 3.5, "medium": 1.5, "low": 0.5}.get(severity, 0.0)
+    score += {
+        "critical": 4.0,
+        "high": 3.0,
+        "medium": 1.5,
+        "low": 0.5,
+    }.get(priority, 0.0)
+    score += {
+        "critical": 5.0,
+        "high": 3.5,
+        "medium": 1.5,
+        "low": 0.5,
+    }.get(severity, 0.0)
     if status in {"active", "in_progress", "blocked", "pending"}:
         score += 1.5
     created = _timestamp(item.get("updated_at") or item.get("created_at"))
@@ -116,10 +158,16 @@ def score_item(item: Mapping[str, Any], intent: str = "", now: datetime | None =
     return score
 
 
-def _iter_items(context: Mapping[str, Any], fields: Iterable[str]) -> Iterable[tuple[str, dict[str, Any]]]:
+def _iter_items(
+    context: Mapping[str, Any],
+    fields: Iterable[str],
+) -> Iterable[tuple[str, dict[str, Any]]]:
     for field in fields:
         value = context.get(field)
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if isinstance(value, Sequence) and not isinstance(
+            value,
+            (str, bytes, bytearray),
+        ):
             for item in value:
                 if isinstance(item, Mapping):
                     yield field, dict(item)
@@ -152,7 +200,9 @@ def build_context(
     seen: set[str] = set()
     dropped = 0
     for field, item in _iter_items(context, LAYER_FIELDS[normalized_layer]):
-        if _is_expired(item, current) or (not include_untrusted and not _is_trusted(item)):
+        expired = _is_expired(item, current)
+        untrusted = not include_untrusted and not _is_trusted(item)
+        if expired or untrusted:
             dropped += 1
             continue
         fingerprint = _fingerprint(item)
@@ -162,32 +212,72 @@ def build_context(
         seen.add(fingerprint)
         candidates.append((score_item(item, intent, current), field, item))
 
-    candidates.sort(key=lambda entry: (entry[0], _timestamp(entry[2].get("updated_at") or entry[2].get("created_at"))), reverse=True)
-    selected = 0
-    for score, field, item in candidates:
-        annotated = dict(item)
-        annotated["context_score"] = round(score, 3)
-        annotated.setdefault("provenance", item.get("provenance") or item.get("metadata", {}).get("provenance") if isinstance(item.get("metadata"), Mapping) else None)
-        trial = {**output, field: [*output.get(field, []), annotated]}
-        if estimate_tokens(trial) > token_budget:
-            dropped += 1
-            continue
-        output = trial
-        selected += 1
+    candidates.sort(
+        key=lambda entry: (
+            entry[0],
+            _timestamp(
+                entry[2].get("updated_at") or entry[2].get("created_at")
+            ),
+        ),
+        reverse=True,
+    )
 
-    output["context_policy"] = {
+    policy = {
         "layer": normalized_layer,
         "budget": token_budget,
         "intent": intent,
         "excluded_untrusted": not include_untrusted,
     }
+    selected = 0
+    for score, field, item in candidates:
+        annotated = dict(item)
+        annotated["context_score"] = round(score, 3)
+        annotated.setdefault("provenance", _provenance(item))
+        trial = {
+            **output,
+            field: [*output.get(field, []), annotated],
+            "context_policy": policy,
+        }
+        if estimate_tokens(trial) > token_budget:
+            dropped += 1
+            continue
+        output[field] = [*output.get(field, []), annotated]
+        selected += 1
+
+    output["context_policy"] = policy
+    metrics_placeholder = {
+        "original_tokens": original_tokens,
+        "returned_tokens": 0,
+        "saved_tokens": 0,
+        "savings_percent": 0.0,
+        "selected_items": selected,
+        "dropped_items": dropped,
+    }
+    output["context_metrics"] = metrics_placeholder
+
+    while estimate_tokens(output) > token_budget:
+        removable = [
+            key
+            for key in reversed(LAYER_FIELDS[normalized_layer])
+            if isinstance(output.get(key), list) and output[key]
+        ]
+        if not removable:
+            break
+        output[removable[0]].pop()
+        selected -= 1
+        dropped += 1
+
     returned_tokens = estimate_tokens(output)
     saved = max(0, original_tokens - returned_tokens)
     metrics = ContextMetrics(
         original_tokens=original_tokens,
         returned_tokens=returned_tokens,
         saved_tokens=saved,
-        savings_percent=round((saved / original_tokens) * 100, 2) if original_tokens else 0.0,
+        savings_percent=(
+            round((saved / original_tokens) * 100, 2)
+            if original_tokens
+            else 0.0
+        ),
         selected_items=selected,
         dropped_items=dropped,
     )
