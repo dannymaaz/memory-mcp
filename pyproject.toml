@@ -19,6 +19,7 @@ keywords = [
   "Codex memory",
   "OpenCode memory",
   "Supabase MCP",
+  "SQLite MCP",
   "project context",
   "Model Context Protocol"
 ]
@@ -52,6 +53,9 @@ persistent-memory-mcp = "persistent_memory_mcp.cli:main"
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools.package-data]
+persistent_memory_mcp = ["sqlite_schema.sql"]
 
 [tool.setuptools.packages.find]
 include = ["src", "src.*", "persistent_memory_mcp", "persistent_memory_mcp.*"]

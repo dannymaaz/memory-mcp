@@ -21,11 +21,15 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 
 ## PR #3 — Local SQLite starter mode
 
-- [ ] Storage-adapter interface
-- [ ] SQLite schema and migrations
-- [ ] Backend selection in `memory-mcp init`
-- [ ] Import/export between SQLite and Supabase
-- [ ] Backend parity tests
+- [x] Storage-adapter interface
+- [x] SQLite schema and initialization
+- [x] Local health check and scoped destructive operations
+- [x] Backend selection in `memory-mcp init`
+- [x] `MEMORY_BACKEND` and `SQLITE_PATH` client configuration
+- [x] Connect the existing MCP service layer through a SQLite-compatible client facade
+- [x] Import/export compatibility through the existing memory bundle tools
+- [x] Backend query-shape and CLI parity tests
+- [x] Package the SQLite schema in built distributions
 
 ## PR #4 — Safe automatic client installation
 
