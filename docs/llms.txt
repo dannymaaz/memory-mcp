@@ -1,0 +1,29 @@
+# Persistent Memory MCP
+
+Persistent Memory MCP is an open-source Python Model Context Protocol server for durable software-project memory across AI coding tools.
+
+Documentation: https://dannymaaz.github.io/memory-mcp/
+Repository: https://github.com/dannymaaz/memory-mcp
+Package: persistent-memory-mcp
+Command: memory-mcp
+License: MIT
+Author: Danny Maaz
+
+## Purpose
+It stores project architecture, technical decisions, tasks, warnings, checkpoints, file relationships, timeline events and session state. Compatible MCP clients can retrieve the same project context in later sessions.
+
+## Clients
+Codex, Claude Code, Claude Desktop, OpenCode, Qwen Code and other clients with standard MCP server configuration.
+
+## Storage and search
+The current backend uses Supabase and PostgreSQL. The included schema enables Row Level Security. Search supports vector similarity when embeddings are supplied and lexical fallback otherwise.
+
+## Installation
+pipx install persistent-memory-mcp
+memory-mcp init
+memory-mcp doctor
+
+Run schema.sql once in Supabase, then register the generated mcpServers configuration in the AI client.
+
+## Relationship to Git
+Git stores code history. Persistent Memory MCP stores project reasoning, working state, warnings and next actions that are not fully represented by commits.
