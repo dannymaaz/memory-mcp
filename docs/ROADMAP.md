@@ -62,12 +62,14 @@ This roadmap keeps the post-v0.2 work separated into focused, reviewable pull re
 
 ## PR #6 — Embeddings and hybrid search
 
-- [ ] Configurable embedding provider
+- [x] Configurable embedding provider foundation
 - [ ] Background indexing and reindex command
-- [ ] Semantic plus lexical ranking
-- [ ] Provider-free fallback
-- [ ] Cost, retry and rate-limit controls
+- [x] Semantic plus lexical ranking foundation
+- [x] Provider-free fallback
+- [x] Embedding call-budget controls and safe provider fallback
+- [ ] Retry and rate-limit backoff for remote providers
 - [ ] Contradiction and near-duplicate detection
+- [ ] MCP tool integration and persisted embedding lifecycle
 
 ## PR #7 — Local-first operational dashboard
 
