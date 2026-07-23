@@ -31,11 +31,16 @@ def _identity(item: Mapping[str, Any], index: int) -> str:
 
 
 def _polarity(tokens: set[str]) -> int:
-    negative = bool(tokens & NEGATIONS)
-    affirmative = bool(tokens & AFFIRMATIONS)
-    if negative and not affirmative:
+    """Resolve operational polarity, giving explicit negation precedence.
+
+    Phrases such as ``never allow`` or ``disable uploads`` contain a positive
+    action word but are still unambiguously negative. Treating explicit
+    negation as dominant avoids missing those contradictions while the shared
+    subject and similarity checks continue to prevent broad false positives.
+    """
+    if tokens & NEGATIONS:
         return -1
-    if affirmative and not negative:
+    if tokens & AFFIRMATIONS:
         return 1
     return 0
 
@@ -67,7 +72,13 @@ def detect_memory_relations(
             score = round((similarity * 0.65) + (lexical * 0.35), 4)
             if score >= duplicate_threshold:
                 relations.append(
-                    MemoryRelation(left_id, right_id, "near_duplicate", score, "high semantic and lexical overlap")
+                    MemoryRelation(
+                        left_id,
+                        right_id,
+                        "near_duplicate",
+                        score,
+                        "high semantic and lexical overlap",
+                    )
                 )
                 continue
             left_polarity = _polarity(left_tokens)
@@ -79,6 +90,12 @@ def detect_memory_relations(
                 and len(shared_subject) >= 2
             ):
                 relations.append(
-                    MemoryRelation(left_id, right_id, "possible_contradiction", score, "shared subject with opposing polarity")
+                    MemoryRelation(
+                        left_id,
+                        right_id,
+                        "possible_contradiction",
+                        score,
+                        "shared subject with opposing polarity",
+                    )
                 )
     return relations
