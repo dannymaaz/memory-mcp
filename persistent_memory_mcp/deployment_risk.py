@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Sequence
 
 
 @dataclass(frozen=True)
@@ -66,10 +66,7 @@ def compare_deployment_commits(
         "remembered_commit": remembered_commit,
     }
     present = {value for value in values.values() if value}
-    if len(present) <= 1:
-        state = "aligned" if present else "unknown"
-    else:
-        state = "drift"
+    state = "aligned" if len(present) == 1 else "drift" if len(present) > 1 else "unknown"
     return {
         **values,
         "state": state,
@@ -81,7 +78,9 @@ def compare_deployment_commits(
     }
 
 
-def build_deployment_tools(server_module: Any) -> tuple[Callable[..., dict[str, Any]], Callable[..., dict[str, Any]]]:
+def build_deployment_tools(
+    server_module: Any,
+) -> tuple[Callable[..., dict[str, Any]], Callable[..., dict[str, Any]]]:
     """Build bounded MCP tools for recording and reading deployment provenance."""
 
     def record_deployment(
@@ -126,6 +125,7 @@ def build_deployment_tools(server_module: Any) -> tuple[Callable[..., dict[str, 
         )
         payload = {
             "project_id": project["id"],
+            "owner_id": project.get("owner_id") or owner_id,
             "service": service.strip(),
             "environment": environment.strip(),
             "commit_sha": commit_sha.strip(),
