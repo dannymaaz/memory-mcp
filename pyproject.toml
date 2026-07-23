@@ -48,8 +48,8 @@ Repository = "https://github.com/dannymaaz/memory-mcp"
 Issues = "https://github.com/dannymaaz/memory-mcp/issues"
 
 [project.scripts]
-memory-mcp = "persistent_memory_mcp.cli:main"
-persistent-memory-mcp = "persistent_memory_mcp.cli:main"
+memory-mcp = "persistent_memory_mcp.runtime:main"
+persistent-memory-mcp = "persistent_memory_mcp.runtime:main"
 
 [tool.setuptools]
 include-package-data = true
