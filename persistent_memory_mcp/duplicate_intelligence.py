@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .hybrid_search import cosine_similarity, local_embedding, render_memory_text
 
-_NEGATION_RE = re.compile(r"\b(no|not|never|without|disabled|deny|forbid|must not)\b", re.IGNORECASE)
+_NEGATION_RE = re.compile(
+    r"\b(no|not|never|without|disabled|deny|forbid|must not)\b",
+    re.IGNORECASE,
+)
 _NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 
 
@@ -85,7 +88,7 @@ def analyze_memory_relationship(
             evidence=contradiction,
         )
 
-    if left_text.strip() == right_text.strip():
+    if " ".join(left_text.split()) == " ".join(right_text.split()):
         return MemoryRelationship(
             relationship="exact_duplicate",
             recommendation="merge",
@@ -135,7 +138,11 @@ def find_memory_relationships(
     if limit < 1 or limit > 100:
         raise ValueError("limit must be between 1 and 100")
     matches: list[dict[str, Any]] = []
+    candidate_id = str(candidate.get("id") or candidate.get("source_id") or "")
     for item in existing:
+        item_id = str(item.get("id") or item.get("source_id") or "")
+        if candidate_id and item_id == candidate_id:
+            continue
         result = analyze_memory_relationship(candidate, item)
         if result.relationship == "distinct":
             continue
@@ -159,3 +166,129 @@ def find_memory_relationships(
         reverse=True,
     )
     return matches[:limit]
+
+
+def _replace_registered_tool(server: Any, name: str, function: Callable[..., Any]) -> None:
+    tools = getattr(server, "_tools", None)
+    if isinstance(tools, dict):
+        tools[name] = function
+    manager = getattr(server, "_tool_manager", None)
+    managed = getattr(manager, "_tools", None)
+    if isinstance(managed, dict) and name in managed:
+        tool = managed[name]
+        if hasattr(tool, "fn"):
+            tool.fn = function
+        elif hasattr(tool, "function"):
+            tool.function = function
+        else:
+            managed[name] = function
+
+
+def build_relationship_tool(server_module: Any) -> Callable[..., dict[str, Any]]:
+    """Build the MCP-facing bounded relationship analysis tool."""
+
+    def analyze_memory_relationships(
+        memory_id: str,
+        project_id: str | None = None,
+        owner_id: str | None = None,
+        *,
+        limit: int = 10,
+        persist: bool = False,
+    ) -> dict[str, Any]:
+        if not memory_id:
+            return {"error": "memory_id is required", "tool": "analyze_memory_relationships"}
+        if limit < 1 or limit > 100:
+            return {
+                "error": "limit must be between 1 and 100",
+                "tool": "analyze_memory_relationships",
+            }
+        client = server_module._client(owner_id)
+        try:
+            project, _, _ = server_module._resolve_or_create_project(
+                client,
+                project_id=project_id,
+                owner_id=owner_id,
+                create_if_missing=False,
+            )
+            rows = server_module._table_select(
+                client,
+                "memory_documents",
+                {"project_id": project["id"]},
+            )
+            candidate = next(
+                (
+                    row
+                    for row in rows
+                    if str(row.get("id") or row.get("source_id") or "") == memory_id
+                ),
+                None,
+            )
+            if candidate is None:
+                return {
+                    "error": "memory record was not found in the resolved project",
+                    "tool": "analyze_memory_relationships",
+                }
+            matches = find_memory_relationships(candidate, rows, limit=limit)
+            persisted = False
+            if persist:
+                relationships = [
+                    {
+                        "memory_id": str(
+                            match["item"].get("id")
+                            or match["item"].get("source_id")
+                            or ""
+                        ),
+                        "relationship": match["relationship"],
+                        "recommendation": match["recommendation"],
+                        "confidence": round(float(match["confidence"]), 6),
+                        "evidence": match["evidence"],
+                    }
+                    for match in matches
+                ]
+                metadata = {
+                    **(candidate.get("metadata") or {}),
+                    "memory_relationships": relationships,
+                    "memory_relationships_version": 1,
+                }
+                server_module._table_upsert(
+                    client,
+                    "memory_documents",
+                    {**candidate, "metadata": metadata},
+                )
+                persisted = True
+            return {
+                "status": "ok",
+                "project_id": project["id"],
+                "memory_id": memory_id,
+                "analyzed": max(0, len(rows) - 1),
+                "matches": matches,
+                "persisted": persisted,
+            }
+        except Exception as exc:
+            return {"error": str(exc), "tool": "analyze_memory_relationships"}
+
+    analyze_memory_relationships.__name__ = "analyze_memory_relationships"
+    analyze_memory_relationships.__doc__ = (
+        "Analiza duplicados, relaciones y contradicciones sin modificar contenido."
+    )
+    return analyze_memory_relationships
+
+
+def install_duplicate_intelligence(server_module: Any) -> Callable[..., dict[str, Any]]:
+    """Install duplicate intelligence once without rewriting the legacy server."""
+    if getattr(server_module, "_duplicate_intelligence_installed", False):
+        return server_module.analyze_memory_relationships
+    tool = build_relationship_tool(server_module)
+    server_module.analyze_memory_relationships = tool
+    _replace_registered_tool(server_module.server, "analyze_memory_relationships", tool)
+    try:
+        server_module.server.tool(
+            name="analyze_memory_relationships",
+            description=(
+                "Analiza duplicados, relaciones y contradicciones sin modificar contenido."
+            ),
+        )(tool)
+    except Exception:
+        pass
+    server_module._duplicate_intelligence_installed = True
+    return tool
