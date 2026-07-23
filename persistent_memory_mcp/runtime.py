@@ -6,6 +6,7 @@ import argparse
 
 from . import cli
 from .code_intelligence import install_code_intelligence
+from .embedding_lifecycle import install_embedding_lifecycle
 from .git_verification import install_git_verification
 from .security_integration import install_security_boundaries
 from .server_integration import install_hybrid_search
@@ -18,6 +19,7 @@ def command_serve(_args: argparse.Namespace) -> int:
 
     install_security_boundaries(server_module)
     install_hybrid_search(server_module)
+    install_embedding_lifecycle(server_module)
     install_git_verification(server_module)
     install_code_intelligence(server_module)
     install_session_lifecycle(server_module)
