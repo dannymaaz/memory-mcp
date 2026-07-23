@@ -62,6 +62,13 @@ def _idle_minutes() -> int:
     return value
 
 
+def _server_now(server_module: Any) -> datetime:
+    """Return the server clock so lifecycle decisions and persisted timestamps agree."""
+    now_factory = getattr(server_module, "_now_iso", None)
+    parsed = _parse_datetime(now_factory() if callable(now_factory) else None)
+    return parsed or datetime.now(UTC)
+
+
 def _replace_tool(server: Any, name: str, function: Callable[..., Any]) -> None:
     tools = getattr(server, "_tools", None)
     if isinstance(tools, dict):
@@ -97,12 +104,17 @@ def install_session_lifecycle(server_module: Any) -> None:
             interface_name = interface or server_module.detect_interface()
             active = server_module._find_active_session(client, project["id"])
             if active is not None:
-                stale = session_is_stale(active, idle_minutes=_idle_minutes())
+                stale = session_is_stale(
+                    active,
+                    now=_server_now(server_module),
+                    idle_minutes=_idle_minutes(),
+                )
                 same_interface = active.get("interface") == interface_name
                 if same_interface and not stale:
                     metadata = {
                         **(active.get("metadata") or {}),
-                        "current_goal": current_goal or (active.get("metadata") or {}).get("current_goal", ""),
+                        "current_goal": current_goal
+                        or (active.get("metadata") or {}).get("current_goal", ""),
                         "last_activity_at": server_module._now_iso(),
                     }
                     updated = server_module._table_upsert(
