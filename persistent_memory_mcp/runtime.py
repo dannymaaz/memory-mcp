@@ -6,6 +6,7 @@ import argparse
 
 from . import cli
 from .server_integration import install_hybrid_search
+from .session_lifecycle import install_session_lifecycle
 
 
 def command_serve(_args: argparse.Namespace) -> int:
@@ -13,6 +14,7 @@ def command_serve(_args: argparse.Namespace) -> int:
     from src import server as server_module
 
     install_hybrid_search(server_module)
+    install_session_lifecycle(server_module)
     server_module.main()
     return 0
 
