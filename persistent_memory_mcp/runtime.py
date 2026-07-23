@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from . import cli
+from .code_intelligence import install_code_intelligence
 from .git_verification import install_git_verification
 from .server_integration import install_hybrid_search
 from .session_lifecycle import install_session_lifecycle
@@ -16,6 +17,7 @@ def command_serve(_args: argparse.Namespace) -> int:
 
     install_hybrid_search(server_module)
     install_git_verification(server_module)
+    install_code_intelligence(server_module)
     install_session_lifecycle(server_module)
     server_module.main()
     return 0
