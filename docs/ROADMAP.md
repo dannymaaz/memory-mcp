@@ -1,93 +1,108 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap keeps the post-v0.2 work separated into focused, reviewable pull requests while preserving the complete product vision: secure, local-first, token-efficient, verifiable and safe for long-running coding-agent workflows.
+This roadmap reflects the repository state after PRs #1–#9. It separates completed capabilities from partial integrations and future product work so that a merged foundation is not mistaken for a finished end-to-end feature.
 
-## PR #2 — Security, isolation and retention
+## Status legend
 
-- [x] Secret redaction primitives
-- [x] Stored-instruction detection and untrusted-content metadata
-- [x] Content-size limits
-- [x] Provenance normalization
-- [x] TTL/expiry metadata
-- [x] Owner/project isolation guard primitives
-- [x] Scope-validated selective deletion plans
-- [x] Retention candidate selection with dry-run support
-- [x] Schema migration for expiry, sensitivity and indexes
-- [ ] Apply sanitization to every memory write path
-- [ ] Enforce project/owner boundary validation in all service paths
-- [ ] Expose selective forget/delete MCP tools
-- [ ] Execute retention cleanup after dry-run confirmation
-- [ ] Add adversarial and end-to-end cross-owner isolation tests
+- ✅ **Complete** — implemented, integrated and covered by repository tests.
+- 🟡 **Partial** — useful foundation exists, but one or more end-to-end paths remain.
+- ⬜ **Planned** — not implemented yet.
 
-## PR #3 — Local SQLite starter mode
+## Delivered foundation
 
-- [x] Storage-adapter interface
-- [x] SQLite schema and initialization
-- [x] Local health check and scoped destructive operations
-- [x] Backend selection in `memory-mcp init`
-- [x] `MEMORY_BACKEND` and `SQLITE_PATH` client configuration
-- [x] Connect the existing MCP service layer through a SQLite-compatible client facade
-- [x] Import/export compatibility through the existing memory bundle tools
-- [x] Backend query-shape and CLI parity tests
-- [x] Package the SQLite schema in built distributions
+### PR #1 — Product CLI and multi-client onboarding — ✅ Complete
 
-## PR #4 — Safe automatic client installation
+- Python distribution renamed to `persistent-memory-mcp`.
+- `memory-mcp` and `persistent-memory-mcp` command aliases.
+- `init`, `doctor`, `status` and `serve` commands.
+- Configuration generation for Codex, Claude Code, OpenCode and Antigravity.
+- Package, documentation and Python 3.11–3.13 CI foundation.
 
-- [x] Detect Codex, Claude Code, OpenCode and Antigravity configuration paths
-- [x] Platform-specific path handling and explicit path overrides
-- [x] Back up existing files before changes
-- [x] Merge without removing unrelated MCP servers or preferences
-- [x] Validate TOML and JSON before replacement
-- [x] Atomic configuration writes
-- [x] Installation manifest
-- [x] `install`, `uninstall`, `backups` and `rollback` commands
-- [x] Optional installation from `memory-mcp init`
-- [x] Interactive confirmation and `--yes` automation mode
-- [x] Deterministic uninstall of only the managed MCP entry
-- [x] End-to-end safety tests for merge, backup, manifest, uninstall and rollback
+### PR #2 — Security, isolation and retention foundation — 🟡 Partial
 
-## PR #5 — Token-efficient context engine
+Completed:
 
-- [x] Intent-aware context builder
-- [x] Configurable token budgets
-- [x] Short, operational and detailed memory layers
-- [x] Relevance ranking and exact deduplication
-- [x] Automatic session/checkpoint compression
-- [x] Token-use and token-savings measurements
-- [x] Provenance included in returned context
-- [x] Safe exclusion of expired and untrusted memory
-- [x] Context controls exposed through optimizer request metadata and MCP runtime environment
-- [x] Benchmark fixtures and savings regression thresholds
-- [x] Compatibility tests for the existing optimizer interface
-- [x] Project, service and deployment guardrails
-- [x] Safe credential references without secret values
+- Secret redaction primitives.
+- Stored-instruction detection and untrusted-content metadata.
+- Content-size limits, provenance normalization and TTL metadata.
+- Owner/project isolation guard primitives.
+- Scope-validated selective-deletion plans.
+- Retention candidate selection with dry-run support.
+- Schema migration for expiry, sensitivity and indexes.
 
-## PR #6 — Embeddings and hybrid search
+Remaining:
 
-- [x] Configurable embedding-provider foundation
-- [x] Deterministic provider-free local fallback
-- [x] Semantic plus lexical ranking foundation
-- [x] Embedding-call budgets and stored-vector reuse
-- [ ] Integrate hybrid ranking into `search_semantic_memory`
-- [ ] Persisted embedding lifecycle and schema support
-- [ ] Background indexing and reindex command
-- [ ] Remote-provider retry, backoff and rate-limit controls
-- [ ] Contradiction and near-duplicate detection foundation
-- [ ] Search quality and cost regression benchmarks
+- Apply sanitization to every memory write path.
+- Enforce owner/project validation in every service read and write path.
+- Expose selective forget/delete MCP tools.
+- Execute retention cleanup only after explicit dry-run confirmation.
+- Add adversarial end-to-end cross-owner and cross-project tests.
 
-## PR #7 — Automatic agent session lifecycle
+### PR #3 — Local SQLite starter mode — ✅ Complete
 
-- [ ] Automatically resolve the active project at session start
-- [ ] Load project guardrails before coding actions
-- [ ] Create and resume sessions without requiring manual prompts
-- [ ] Capture decisions, tasks, changed files and warnings at meaningful milestones
-- [ ] Save checkpoints before context exhaustion or client shutdown
-- [ ] End sessions with completed work, remaining work and the next safe action
-- [ ] Add configurable checkpoint cadence and token thresholds
-- [ ] Prevent duplicate session creation across reconnects
-- [ ] Provide a shared cross-client continuation contract
+- Storage-adapter protocol and SQLite implementation.
+- WAL mode, foreign keys and scoped destructive operations.
+- Backend selection for SQLite, Supabase and PostgreSQL.
+- Supabase-query-compatible local facade.
+- Import/export compatibility and packaged SQLite schema.
 
-The continuation contract must expose stable fields such as:
+### PR #4 — Safe automatic client installation — ✅ Complete
+
+- Client configuration discovery on Linux, macOS and Windows.
+- Backups, atomic writes and TOML/JSON validation.
+- Safe merge that preserves unrelated configuration.
+- Installation manifest, rollback and deterministic uninstall.
+
+### PR #5 — Token-efficient context and project guardrails — ✅ Complete
+
+- Intent-aware context builder and token budgets.
+- Short, operational and detailed context layers.
+- Relevance ranking, exact deduplication and deterministic compression.
+- Token-use and token-savings metrics.
+- Expired and untrusted-memory exclusion.
+- Project, service and deployment guardrails.
+- Safe credential references without storing secret values.
+
+### PR #6 — Embeddings and hybrid-search foundation — 🟡 Partial
+
+Completed:
+
+- Configurable embedding-provider abstraction.
+- Deterministic provider-free local embeddings.
+- Lexical, semantic and weighted hybrid ranking core.
+- Stored-vector reuse, call budgets, fallback metrics and deterministic ordering.
+- Runtime integration with semantic-memory search.
+
+Remaining:
+
+- Persist the complete embedding lifecycle and schema metadata.
+- Add background indexing and an explicit reindex command.
+- Add remote-provider retry, backoff and rate-limit controls.
+- Add contradiction and near-duplicate detection.
+- Add search-quality and provider-cost regression benchmarks.
+
+### PR #7 — Automatic session lifecycle foundation — 🟡 Partial
+
+Completed:
+
+- Reuse compatible active sessions.
+- Prevent duplicate creation across reconnects.
+- Heartbeat through `last_activity_at`.
+- Close stale sessions using configurable idle time.
+- End the previous interface session during cross-client handoff.
+- Fix automatic session creation in `sync_session_state`.
+
+Remaining:
+
+- Resolve the active project automatically at session start.
+- Load project guardrails before coding actions.
+- Capture decisions, tasks, changed files and warnings automatically.
+- Save checkpoints before context exhaustion or client shutdown.
+- End sessions with completed work, pending work and the next safe action.
+- Add configurable checkpoint cadence and token thresholds.
+- Implement the complete shared continuation contract.
+
+Required continuation fields:
 
 - `current_goal`
 - `completed_work`
@@ -99,132 +114,141 @@ The continuation contract must expose stable fields such as:
 - `do_not_touch`
 - `repository_state`
 
-## PR #8 — Git-grounded memory verification and staleness
+### PR #8 — Git-grounded memory verification — ✅ Complete
 
-- [ ] Bind checkpoints to repository, branch, commit SHA and pull request
-- [ ] Verify that referenced commits, branches and files still exist
-- [ ] Compare remembered file state with the active repository
-- [ ] Mark memories as `verified`, `stale`, `contradicted`, `missing_source` or `unverified`
-- [ ] Prefer repository state over remembered state when they disagree
-- [ ] Detect merged, deleted or rebased branches
-- [ ] Detect when production and repository commits differ
-- [ ] Refresh or supersede stale memories without silently deleting history
-- [ ] Add provenance timestamps and last-verified commit metadata
+- Repository root, branch, HEAD, remote and dirty-state detection.
+- Commit, branch and repository-relative file verification.
+- SHA-256 evidence for file contradictions.
+- `verified`, `stale`, `contradicted`, `missing_source` and `unverified` states.
+- Repository facts preferred over remembered repository state.
+- Bounded verification history and last-verified provenance.
+- Read-only, time-limited Git access and traversal protection.
 
-## PR #9 — Code intelligence, symbols and impact graph
+Future extension:
 
-- [ ] Index classes, functions, methods, endpoints, tables, migrations and configuration symbols
-- [ ] Store symbol purpose, file, dependencies and last-verified commit
-- [ ] Detect moved, renamed and deleted symbols
-- [ ] Build file-to-symbol and symbol-to-symbol relationships
-- [ ] Link symbols to tests, decisions, tasks, services and deployments
-- [ ] Provide impact analysis before changes
-- [ ] Warn when a requested function or module already exists
-- [ ] Provide compact dependency subgraphs for agent context
-- [ ] Enforce performance limits for large repositories
+- Bind session checkpoints directly to pull-request identity when available.
+- Improve explicit moved, rebased and renamed-reference explanations.
 
-## PR #10 — Duplicate and contradiction intelligence
+### PR #9 — Code intelligence and impact graph foundation — 🟡 Partial
 
-- [ ] Detect exact and semantic duplicate memories
-- [ ] Detect duplicate tasks with different wording
-- [ ] Detect similar or duplicated code responsibilities
-- [ ] Detect duplicate configuration and service registrations
-- [ ] Detect conflicting decisions, rules and operational thresholds
-- [ ] Return `merge`, `keep_both`, `mark_related`, `replace_old` or `ignore` recommendations
-- [ ] Never auto-delete or auto-merge ambiguous records
-- [ ] Track superseded decisions while preserving history
-- [ ] Add confidence, evidence and human-resolution workflows
+Completed:
 
-## PR #11 — Deployment history and risk-aware execution
+- Python class, function and method indexing through AST.
+- JavaScript/TypeScript class and function indexing.
+- SQL table, view, function, trigger and index extraction.
+- Stable symbol IDs, source coordinates, purpose and commit provenance.
+- Typed `defines`, `contains`, `calls` and `inherits` relationships.
+- Bounded symbol/file impact subgraphs.
+- Detection of potentially existing symbols or responsibilities.
+- Large-repository file-count, size and traversal limits.
+- MCP tools `index_repository_symbols` and `analyze_symbol_impact`.
 
-- [ ] Persist deployment records by project, service, environment and commit SHA
-- [ ] Record tests, result, timestamp, operator and rollback target
-- [ ] Compare repository, deployed and remembered commits
-- [ ] Classify actions as low, medium or high risk
-- [ ] Require stronger confirmation for production, destructive and irreversible actions
-- [ ] Validate exact service, host, directory and restart command before execution
-- [ ] Detect intent-versus-scope drift after changes
-- [ ] Report unexpected files or services touched
-- [ ] Provide safe rollback plans and deployment provenance
+Remaining:
 
-## PR #12 — Agent evaluation and provenance suite
+- Detect moved, renamed and deleted symbols across repository revisions.
+- Persist symbol and relationship indexes in the configured storage backend.
+- Link symbols to tests, decisions, tasks, services and deployments.
+- Improve endpoint, migration and configuration-symbol extraction.
+- Add language-aware call resolution beyond uniquely named local targets.
 
-- [ ] Evaluate project identification accuracy
-- [ ] Evaluate service and deployment-target accuracy
-- [ ] Measure duplicate-avoidance rate
-- [ ] Measure wrong-target prevention rate
-- [ ] Measure stale-memory detection rate
-- [ ] Measure continuation accuracy across clients and chats
-- [ ] Measure token savings under fixed quality thresholds
-- [ ] Evaluate prompt-injection and poisoned-memory resistance
-- [ ] Add reproducible multi-agent handoff scenarios
-- [ ] Explain the source, verification state and confidence of important facts
+## Current product position
 
-Core quality metrics:
+The secure local-first backend, context engine, session foundation, Git verification and code-intelligence core are available. The project is suitable for technical evaluation and continued development, but it is not yet the complete dashboard-and-team product described below.
 
-- project identification accuracy
-- service identification accuracy
-- duplicate avoidance rate
-- wrong-target prevention rate
-- context token savings
-- task continuation accuracy
-- stale-memory detection rate
-- contradiction-resolution precision
+## Next delivery milestones
 
-## PR #13 — Local-first operational dashboard
+### PR #10 — Roadmap reconciliation and implementation status — ✅ Current maintenance PR
 
-- [ ] Local dashboard command and localhost-only default
-- [ ] Projects and sessions
-- [ ] Decisions, tasks, warnings and file memory
-- [ ] Search, export and selective deletion
-- [ ] Retention, sensitivity and storage visibility
-- [ ] Token-budget and estimated-savings analytics
-- [ ] Memory verification and staleness status
-- [ ] Deployment and risk history
-- [ ] SQLite and Supabase backend support
+- Reconcile documentation with merged PRs #1–#9.
+- Mark completed, partial and planned capabilities accurately.
+- Document the exact remaining integration gaps.
+- Renumber future milestones to avoid conflicting with actual GitHub PR numbers.
+- Add an implementation-status document suitable for release and contributor planning.
 
-## PR #14 — Galaxy knowledge view
+### PR #11 — Duplicate and contradiction intelligence — ⬜ Planned
 
-- [ ] Animated project knowledge graph
-- [ ] Nodes for projects, files, symbols, decisions, tasks, warnings and sessions
-- [ ] Typed relationships and domain clustering
-- [ ] Zoom, filters, focus mode and search
-- [ ] Select a subgraph to build compact agent context
-- [ ] Duplicate, contradiction, stale-memory and orphan-node visualization
-- [ ] Performance limits for large graphs
+- Detect exact and semantic duplicate memories.
+- Detect duplicate tasks with different wording.
+- Detect similar or duplicated code responsibilities.
+- Detect duplicate configuration and service registrations.
+- Detect conflicting decisions, rules and operational thresholds.
+- Return `merge`, `keep_both`, `mark_related`, `replace_old` or `ignore` recommendations.
+- Never auto-delete or auto-merge ambiguous records.
+- Track superseded decisions while preserving history.
+- Add confidence, evidence and human-resolution workflows.
 
-## PR #15 — Teams, roles and remote dashboard
+### PR #12 — Deployment history and risk-aware execution — ⬜ Planned
 
-- [ ] Supabase Auth integration
-- [ ] Workspace membership and invitations
-- [ ] Owner, admin, member and reader roles
-- [ ] Shared-project RLS policies
-- [ ] Private and shared memories
-- [ ] Audit trail and permission tests
-- [ ] Secure remote dashboard deployment
+- Persist deployment records by project, service, environment and commit SHA.
+- Record tests, result, timestamp, operator and rollback target.
+- Compare repository, deployed and remembered commits.
+- Classify actions as low, medium or high risk.
+- Require stronger confirmation for production, destructive and irreversible actions.
+- Validate exact service, host, directory and restart command before execution.
+- Detect intent-versus-scope drift and unexpected files or services touched.
+- Provide rollback plans and deployment provenance.
 
-## PR #16 — Distribution, deployment and publication
+### PR #13 — Agent evaluation and provenance suite — ⬜ Planned
 
-- [ ] Docker image
-- [ ] Render/Railway deployment guides
-- [ ] Release automation and package publication
-- [ ] MCP Registry submission
-- [ ] Versioned upgrade and migration documentation
-- [ ] Backup, restore and disaster-recovery documentation
-- [ ] Optional privacy-preserving telemetry, disabled by default
+- Evaluate project and service identification accuracy.
+- Measure duplicate avoidance and wrong-target prevention.
+- Measure stale-memory detection and continuation accuracy.
+- Measure token savings under fixed quality thresholds.
+- Evaluate prompt-injection and poisoned-memory resistance.
+- Add reproducible multi-agent handoff scenarios.
+- Explain source, verification state and confidence for important facts.
+
+### PR #14 — Local-first operational dashboard — ⬜ Planned
+
+- Local dashboard command with localhost-only default.
+- Projects, sessions, decisions, tasks, warnings and file memory.
+- Search, export, selective deletion and retention controls.
+- Sensitivity, storage and token-savings visibility.
+- Verification, staleness, deployment and risk history.
+- SQLite and Supabase backend support.
+
+### PR #15 — Galaxy knowledge view — ⬜ Planned
+
+- Animated project knowledge graph.
+- Nodes for projects, files, symbols, decisions, tasks, warnings and sessions.
+- Typed relationships, clustering, zoom, filters, focus mode and search.
+- Select subgraphs to build compact agent context.
+- Visualize duplicates, contradictions, stale memories and orphan nodes.
+- Enforce performance limits for large graphs.
+
+### PR #16 — Teams, roles and remote dashboard — ⬜ Planned
+
+- Supabase Auth integration.
+- Workspace membership and invitations.
+- Owner, admin, member and reader roles.
+- Shared-project RLS policies.
+- Private and shared memories.
+- Audit trail and permission tests.
+- Secure remote dashboard deployment.
+
+### PR #17 — Distribution, deployment and publication — ⬜ Planned
+
+- Docker image.
+- Render and Railway deployment guides.
+- Release automation and package publication.
+- MCP Registry submission.
+- Versioned upgrade and migration documentation.
+- Backup, restore and disaster-recovery documentation.
+- Optional privacy-preserving telemetry, disabled by default.
 
 ## Final product validation
 
-- [ ] Clean local installation and upgrade
-- [ ] Multi-client configuration and rollback
-- [ ] SQLite and Supabase parity
-- [ ] Cross-owner and cross-project isolation
-- [ ] Secret redaction and prompt-injection resistance
-- [ ] Selective deletion and retention execution
-- [ ] Automatic cross-client memory recovery
-- [ ] Git-grounded stale-memory detection
-- [ ] Symbol-level duplicate avoidance and impact analysis
-- [ ] Safe project, service and deployment targeting
-- [ ] Measurable token savings under fixed quality thresholds
-- [ ] Operational dashboard and Galaxy View
-- [ ] Export, backup, restore and full-project deletion
+- [ ] Clean local installation and upgrade.
+- [x] Multi-client configuration, backup and rollback.
+- [ ] Full SQLite and Supabase behavioral parity.
+- [ ] End-to-end cross-owner and cross-project isolation.
+- [ ] Sanitization on every write path and poisoned-memory resistance.
+- [ ] Selective deletion and confirmed retention execution.
+- [ ] Complete automatic cross-client memory recovery.
+- [x] Git-grounded stale-memory classification foundation.
+- [ ] Persistent symbol-level duplicate avoidance and full impact analysis.
+- [x] Project, service and deployment-target guardrail foundation.
+- [x] Measurable token savings under regression thresholds.
+- [ ] Operational dashboard and Galaxy View.
+- [ ] Teams, roles and remote access.
+- [ ] Release, registry publication and disaster-recovery documentation.
