@@ -56,7 +56,8 @@ def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Return a sanitized copy while preserving the server's payload shape."""
     clean = dict(payload)
     findings: list[dict[str, Any]] = []
-    provenance = clean.get("provenance") if isinstance(clean.get("provenance"), dict) else None
+    provenance_value = clean.get("provenance")
+    provenance = provenance_value if isinstance(provenance_value, dict) else None
 
     for key, value in list(clean.items()):
         if key not in _TEXT_FIELDS or not isinstance(value, str):
@@ -148,18 +149,39 @@ def install_security_boundaries(server_module: Any) -> None:
             projects = original_select(
                 client,
                 "projects",
-                {"id": scoped_filters["project_id"], "owner_id": _owner_id()},
+                {
+                    "id": scoped_filters["project_id"],
+                    "owner_id": _owner_id(),
+                },
             )
             if not projects:
                 raise PermissionError("Project does not belong to the active owner")
         return rows
 
-    def secure_insert(client: Any, table: str, payload: dict[str, Any]) -> dict[str, Any]:
-        scoped = _validate_scope(table, payload, raw_select=original_select, client=client)
+    def secure_insert(
+        client: Any,
+        table: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        scoped = _validate_scope(
+            table,
+            payload,
+            raw_select=original_select,
+            client=client,
+        )
         return original_insert(client, table, _sanitize_payload(scoped))
 
-    def secure_upsert(client: Any, table: str, payload: dict[str, Any]) -> dict[str, Any]:
-        scoped = _validate_scope(table, payload, raw_select=original_select, client=client)
+    def secure_upsert(
+        client: Any,
+        table: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        scoped = _validate_scope(
+            table,
+            payload,
+            raw_select=original_select,
+            client=client,
+        )
         return original_upsert(client, table, _sanitize_payload(scoped))
 
     server_module._table_select = secure_select
