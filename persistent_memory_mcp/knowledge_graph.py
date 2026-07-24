@@ -85,6 +85,7 @@ def build_knowledge_graph(
     nodes: dict[str, GraphNode] = {}
     edges: list[GraphEdge] = []
     project_nodes: dict[str, str] = {}
+    file_nodes: dict[tuple[str | None, str], str] = {}
 
     for row in tables.get("projects", ()):
         if project_id and str(row.get("id")) != project_id:
@@ -125,16 +126,19 @@ def build_knowledge_graph(
                 contradicted=contradicted,
                 metadata={"source_table": table},
             )
+            if table == "file_memory" and row.get("file_path"):
+                file_nodes[(row_project, str(row["file_path"]))] = node_id
             project_node = project_nodes.get(row_project or "")
             if project_node:
                 edges.append(GraphEdge(project_node, node_id, "contains"))
 
     for row in tables.get("file_relations", ()):
-        if project_id and str(row.get("project_id") or "") != project_id:
+        relation_project = str(row.get("project_id") or "") or None
+        if project_id and relation_project != project_id:
             continue
-        source = f"file_memory:{row.get('source_file')}"
-        target = f"file_memory:{row.get('target_file')}"
-        if source in nodes and target in nodes:
+        source = file_nodes.get((relation_project, str(row.get("source_file") or "")))
+        target = file_nodes.get((relation_project, str(row.get("target_file") or "")))
+        if source and target:
             edges.append(
                 GraphEdge(
                     source,
