@@ -37,6 +37,8 @@ jobs:
         run: ruff check persistent_memory_mcp src tests
       - name: Tests
         run: pytest -q
+      - name: Agent evaluation regressions
+        run: python -m persistent_memory_mcp.evaluation_regression
 
   dependency-audit:
     name: Dependency audit

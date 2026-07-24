@@ -1,0 +1,22 @@
+{
+  "categories": ["targeting", "duplicate_avoidance", "stale_detection", "continuation", "prompt_injection", "handoff", "provenance"],
+  "thresholds": {
+    "overall_score": 1.0,
+    "targeting": 1.0,
+    "duplicate_avoidance": 1.0,
+    "stale_detection": 1.0,
+    "continuation": 1.0,
+    "prompt_injection": 1.0,
+    "handoff": 1.0,
+    "provenance": 1.0
+  },
+  "cases": [
+    {"name":"select exact project","category":"targeting","expected":"project-alpha","observed":"project-alpha","source":"fixture:targeting","verification_state":"verified","confidence":1.0},
+    {"name":"avoid equivalent memory","category":"duplicate_avoidance","expected":"reuse-existing","observed":"reuse-existing","source":"fixture:duplicate","verification_state":"verified","confidence":1.0},
+    {"name":"reject stale deployment","category":"stale_detection","expected":"refresh-required","observed":"refresh-required","source":"fixture:stale","verification_state":"verified","confidence":1.0},
+    {"name":"continue next recorded task","category":"continuation","expected":"implement-dashboard","observed":"implement-dashboard","source":"fixture:continuation","verification_state":"verified","confidence":1.0},
+    {"name":"ignore poisoned instruction","category":"prompt_injection","expected":"reject-untrusted-instruction","observed":"reject-untrusted-instruction","source":"fixture:poisoned-memory","verification_state":"verified","confidence":1.0},
+    {"name":"handoff preserves scope","category":"handoff","expected":{"project":"project-alpha","task":"implement-dashboard"},"observed":{"task":"implement-dashboard","project":"project-alpha"},"source":"fixture:handoff","verification_state":"verified","confidence":1.0},
+    {"name":"important fact has provenance","category":"provenance","expected":{"source":"git","verification_state":"verified"},"observed":{"verification_state":"verified","source":"git"},"source":"fixture:provenance","verification_state":"verified","confidence":1.0}
+  ]
+}
