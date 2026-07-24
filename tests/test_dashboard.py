@@ -42,6 +42,25 @@ def _storage_with_tasks(tmp_path) -> tuple[SQLiteStorage, dict[str, object], dic
         "tasks",
         {"project_id": second["id"], "owner_id": "owner-1", "title": "Foreign task", "status": "pending"},
     )
+    storage.insert(
+        "file_memory",
+        {"project_id": first["id"], "owner_id": "owner-1", "file_path": "src/server.py"},
+    )
+    storage.insert(
+        "file_memory",
+        {"project_id": first["id"], "owner_id": "owner-1", "file_path": "tests/test_server.py"},
+    )
+    storage.insert(
+        "file_relations",
+        {
+            "project_id": first["id"],
+            "owner_id": "owner-1",
+            "source_file": "src/server.py",
+            "target_file": "tests/test_server.py",
+            "relation_type": "tested_by",
+            "confidence": 0.9,
+        },
+    )
     return storage, first, second
 
 
@@ -120,6 +139,12 @@ def test_dashboard_http_endpoints_and_security_headers(tmp_path) -> None:
             assert response.headers["X-Content-Type-Options"] == "nosniff"
             assert response.headers["X-Frame-Options"] == "DENY"
             assert len(payload["tables"]["tasks"]) == 1
+        with urlopen(f"{base}/api/graph?project_id={first['id']}&limit=10", timeout=5) as response:
+            graph = json.loads(response.read())
+            assert response.status == 200
+            assert any(edge["relation"] == "tested_by" for edge in graph["edges"])
+            assert len(graph["nodes"]) <= 10
+            assert graph["limits"] == {"max_nodes": 10, "max_edges": 30}
         with urlopen(f"{base}/export.csv?tables=tasks&limit=1", timeout=5) as response:
             assert response.headers.get_content_type() == "text/csv"
             assert b"table,record" in response.read()
