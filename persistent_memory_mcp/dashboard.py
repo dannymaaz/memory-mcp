@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 
+from .knowledge_graph import build_knowledge_graph
 from .storage import SQLiteStorage
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -25,6 +26,7 @@ _DASHBOARD_TABLES = (
     "tasks",
     "warnings",
     "file_memory",
+    "file_relations",
     "memory_documents",
     "retention_policies",
     "deployment_records",
@@ -251,6 +253,16 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                 )
                 if parsed.path in {"/api/snapshot", "/export.json"}:
                     payload, content_type = export_snapshot(snapshot, export_format="json")
+                elif parsed.path == "/api/graph":
+                    graph = build_knowledge_graph(
+                        snapshot["tables"],
+                        project_id=project_id,
+                        query=query,
+                        max_nodes=min(limit, 500),
+                        max_edges=min(limit * 3, 1500),
+                    )
+                    payload = json.dumps(graph, ensure_ascii=False, default=str).encode()
+                    content_type = "application/json; charset=utf-8"
                 elif parsed.path == "/export.csv":
                     payload, content_type = export_snapshot(snapshot, export_format="csv")
                 elif parsed.path in {"/", "/index.html"}:
