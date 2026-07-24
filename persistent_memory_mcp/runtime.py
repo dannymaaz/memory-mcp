@@ -10,6 +10,7 @@ from .deployment_risk import install_deployment_risk
 from .deployment_storage import install_deployment_storage
 from .duplicate_intelligence import install_duplicate_intelligence
 from .embedding_lifecycle import install_embedding_lifecycle
+from .evaluation_integration import install_agent_evaluation
 from .git_verification import install_git_verification
 from .security_integration import install_security_boundaries
 from .server_integration import install_hybrid_search
@@ -26,6 +27,7 @@ def command_serve(_args: argparse.Namespace) -> int:
     install_embedding_lifecycle(server_module)
     install_duplicate_intelligence(server_module)
     install_deployment_risk(server_module)
+    install_agent_evaluation(server_module)
     install_git_verification(server_module)
     install_code_intelligence(server_module)
     install_session_lifecycle(server_module)
