@@ -142,7 +142,12 @@ def dashboard_snapshot(
         "counts": counts,
         "tables": result_tables,
         "errors": errors,
-        "filters": {"project_id": project_id, "tables": list(selected), "query": query, "limit": limit},
+        "filters": {
+            "project_id": project_id,
+            "tables": list(selected),
+            "query": query,
+            "limit": limit,
+        },
         "read_only": True,
     }
 
@@ -177,25 +182,33 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
     sections: list[str] = []
     for name, rows in tables.items():
         body = "".join(
-            "<li><code>" + html.escape(json.dumps(row, ensure_ascii=False, default=str)) + "</code></li>"
+            "<li><code>"
+            + html.escape(json.dumps(row, ensure_ascii=False, default=str))
+            + "</code></li>"
             for row in rows
         ) or "<li>No records</li>"
         sections.append(f"<section><h2>{html.escape(str(name))}</h2><ol>{body}</ol></section>")
     query = html.escape(str(filters.get("query") or ""), quote=True)
     project = html.escape(str(filters.get("project_id") or ""), quote=True)
-    return """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Persistent Memory MCP Dashboard</title>
-<style>
-body{font-family:system-ui,sans-serif;margin:0;background:#0b1220;color:#e5edf8}main{max-width:1180px;margin:auto;padding:32px}
-header{margin-bottom:24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-article,section,form{background:#121c2e;border:1px solid #26344b;border-radius:12px;padding:16px}article span{display:block;font-size:2rem;margin-top:8px}
-section{margin-top:16px}ol{padding-left:20px}li{margin:8px 0;overflow-wrap:anywhere}code{white-space:pre-wrap}small{color:#9fb0c7}
-form{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}input,button{padding:10px;border-radius:8px;border:1px solid #41516b;background:#0b1220;color:#e5edf8}
-</style></head><body><main><header><h1>Persistent Memory MCP</h1><small>Local read-only operational dashboard</small></header>
-<form method="get"><input name="project_id" placeholder="Project ID" value=""" + project + """>
-<input name="q" placeholder="Search" maxlength="200" value=""" + query + ""><button type="submit">Filter</button></form>
-<div class="cards">""" + cards + "</div>" + "".join(sections) + "</main></body></html>"
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width\">"
+        "<title>Persistent Memory MCP Dashboard</title><style>"
+        "body{font-family:system-ui,sans-serif;margin:0;background:#0b1220;color:#e5edf8}"
+        "main{max-width:1180px;margin:auto;padding:32px}header{margin-bottom:24px}"
+        ".cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}"
+        "article,section,form{background:#121c2e;border:1px solid #26344b;border-radius:12px;padding:16px}"
+        "article span{display:block;font-size:2rem;margin-top:8px}section{margin-top:16px}"
+        "ol{padding-left:20px}li{margin:8px 0;overflow-wrap:anywhere}code{white-space:pre-wrap}"
+        "small{color:#9fb0c7}form{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}"
+        "input,button{padding:10px;border-radius:8px;border:1px solid #41516b;background:#0b1220;color:#e5edf8}"
+        "</style></head><body><main><header><h1>Persistent Memory MCP</h1>"
+        "<small>Local read-only operational dashboard</small></header>"
+        f"<form method=\"get\"><input name=\"project_id\" placeholder=\"Project ID\" value=\"{project}\">"
+        f"<input name=\"q\" placeholder=\"Search\" maxlength=\"200\" value=\"{query}\">"
+        "<button type=\"submit\">Filter</button></form>"
+        f"<div class=\"cards\">{cards}</div>{''.join(sections)}</main></body></html>"
+    )
 
 
 def _parse_tables(raw: str | None) -> tuple[str, ...] | None:
@@ -215,7 +228,10 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+            )
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
@@ -233,9 +249,7 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                     tables=selected_tables,
                     query=query,
                 )
-                if parsed.path == "/api/snapshot":
-                    payload, content_type = export_snapshot(snapshot, export_format="json")
-                elif parsed.path == "/export.json":
+                if parsed.path in {"/api/snapshot", "/export.json"}:
                     payload, content_type = export_snapshot(snapshot, export_format="json")
                 elif parsed.path == "/export.csv":
                     payload, content_type = export_snapshot(snapshot, export_format="csv")
@@ -265,7 +279,10 @@ def serve_dashboard(config: DashboardConfig) -> None:
     config.validate()
     storage = SQLiteStorage(config.sqlite_path)
     storage.initialize()
-    server = ThreadingHTTPServer((config.host, config.port), build_handler(storage, row_limit=config.row_limit))
+    server = ThreadingHTTPServer(
+        (config.host, config.port),
+        build_handler(storage, row_limit=config.row_limit),
+    )
     print(f"Dashboard available at http://{config.host}:{config.port}")
     server.serve_forever()
 
