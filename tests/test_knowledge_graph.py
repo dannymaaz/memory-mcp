@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import pytest
 
-from persistent_memory_mcp.knowledge_graph import build_knowledge_graph, focus_subgraph
+from persistent_memory_mcp.knowledge_graph import (
+    build_knowledge_graph,
+    compact_graph_context,
+    focus_subgraph,
+)
 
 
 def _tables() -> dict[str, list[dict[str, object]]]:
     return {
         "projects": [{"id": "p1", "name": "Memory MCP", "slug": "memory-mcp"}],
         "file_memory": [
-            {"id": "f1", "project_id": "p1", "file_path": "src/server.py"},
+            {
+                "id": "f1",
+                "project_id": "p1",
+                "file_path": "src/server.py",
+                "symbols": ["build_handler", {"qualified_name": "DashboardConfig.validate"}],
+            },
             {"id": "f2", "project_id": "p1", "file_path": "tests/test_server.py"},
         ],
         "decisions": [
@@ -34,8 +43,9 @@ def test_build_graph_creates_typed_nodes_and_edges() -> None:
     graph = build_knowledge_graph(_tables(), project_id="p1")
     kinds = {node["kind"] for node in graph["nodes"]}
     relations = {edge["relation"] for edge in graph["edges"]}
-    assert {"project", "file", "decision", "task", "warning", "session"} <= kinds
+    assert {"project", "file", "symbol", "decision", "task", "warning", "session"} <= kinds
     assert "contains" in relations
+    assert "defines" in relations
     assert "tested_by" in relations
     stale = next(node for node in graph["nodes"] if node["id"] == "decisions:d1")
     assert stale["stale"] is True
@@ -75,7 +85,17 @@ def test_focus_subgraph_returns_bounded_neighborhood() -> None:
     assert "file_memory:f1" in ids
     assert "projects:p1" in ids
     assert "file_memory:f2" in ids
+    assert any(node_id.startswith("symbol:file_memory:f1") for node_id in ids)
     assert focused["selection"] == ["file_memory:f1"]
+
+
+def test_compact_context_is_bounded_and_read_only() -> None:
+    graph = build_knowledge_graph(_tables())
+    context = compact_graph_context(graph, ["file_memory:f1"], depth=1, max_chars=120)
+    assert context["read_only"] is True
+    assert context["selection"] == ["file_memory:f1"]
+    assert context["context"]
+    assert len(context["context"]) <= 120
 
 
 def test_graph_limits_are_validated() -> None:
@@ -83,3 +103,5 @@ def test_graph_limits_are_validated() -> None:
         build_knowledge_graph({}, max_nodes=0)
     with pytest.raises(ValueError, match="depth"):
         focus_subgraph({"nodes": [], "edges": []}, [], depth=5)
+    with pytest.raises(ValueError, match="max_chars"):
+        compact_graph_context({"nodes": [], "edges": []}, [], max_chars=0)
