@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 
-from .knowledge_graph import build_knowledge_graph
+from .knowledge_graph import build_knowledge_graph, compact_graph_context
 from .storage import SQLiteStorage
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -253,7 +253,7 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                 )
                 if parsed.path in {"/api/snapshot", "/export.json"}:
                     payload, content_type = export_snapshot(snapshot, export_format="json")
-                elif parsed.path == "/api/graph":
+                elif parsed.path in {"/api/graph", "/api/graph/context"}:
                     graph = build_knowledge_graph(
                         snapshot["tables"],
                         project_id=project_id,
@@ -261,6 +261,18 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                         max_nodes=min(limit, 500),
                         max_edges=min(limit * 3, 1500),
                     )
+                    if parsed.path == "/api/graph/context":
+                        raw_selection = params.get("select", [])
+                        selected = [item for raw in raw_selection for item in raw.split(",") if item]
+                        if not selected:
+                            selected = [str(node["id"]) for node in graph["nodes"][:1]]
+                        graph = compact_graph_context(
+                            graph,
+                            selected,
+                            depth=min(4, max(0, int(params.get("depth", ["1"])[0]))),
+                            max_nodes=min(limit, 100),
+                            max_chars=min(12000, max(1, int(params.get("max_chars", ["6000"])[0]))),
+                        )
                     payload = json.dumps(graph, ensure_ascii=False, default=str).encode()
                     content_type = "application/json; charset=utf-8"
                 elif parsed.path == "/export.csv":
