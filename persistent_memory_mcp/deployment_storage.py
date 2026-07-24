@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 _DEPLOYMENT_SQL = """
@@ -40,11 +41,26 @@ def install_deployment_storage() -> None:
         return
     SQLiteStorage.allowed_tables = frozenset((*SQLiteStorage.allowed_tables, "deployment_records"))
     original_initialize = SQLiteStorage.initialize
+    original_decode_row = SQLiteStorage._decode_row
 
     def initialize(self: Any) -> None:
         original_initialize(self)
         with self.connect() as connection:
             connection.executescript(_DEPLOYMENT_SQL)
 
+    def decode_row(row: Any) -> dict[str, Any]:
+        result = original_decode_row(row)
+        for key in ("tests", "rollback_plan", "risk_reasons"):
+            value = result.get(key)
+            if isinstance(value, str) and value and value[:1] in "[{":
+                try:
+                    result[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    pass
+        if isinstance(result.get("confirmation_recorded"), int):
+            result["confirmation_recorded"] = bool(result["confirmation_recorded"])
+        return result
+
     SQLiteStorage.initialize = initialize
+    SQLiteStorage._decode_row = staticmethod(decode_row)
     SQLiteStorage._deployment_storage_installed = True
