@@ -89,6 +89,13 @@ def test_focus_subgraph_returns_bounded_neighborhood() -> None:
     assert focused["selection"] == ["file_memory:f1"]
 
 
+def test_focus_depth_zero_returns_only_selection() -> None:
+    graph = build_knowledge_graph(_tables())
+    focused = focus_subgraph(graph, ["file_memory:f1"], depth=0)
+    assert [node["id"] for node in focused["nodes"]] == ["file_memory:f1"]
+    assert focused["edges"] == []
+
+
 def test_compact_context_is_bounded_and_read_only() -> None:
     graph = build_knowledge_graph(_tables())
     context = compact_graph_context(graph, ["file_memory:f1"], depth=1, max_chars=120)
