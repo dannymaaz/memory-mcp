@@ -44,11 +44,23 @@ def _storage_with_tasks(tmp_path) -> tuple[SQLiteStorage, dict[str, object], dic
     )
     storage.insert(
         "file_memory",
-        {"project_id": first["id"], "owner_id": "owner-1", "file_path": "src/server.py"},
+        {
+            "project_id": first["id"],
+            "owner_id": "owner-1",
+            "file_path": "src/server.py",
+            "summary": "Dashboard server",
+            "symbols": ["build_handler", "dashboard_snapshot"],
+        },
     )
     storage.insert(
         "file_memory",
-        {"project_id": first["id"], "owner_id": "owner-1", "file_path": "tests/test_server.py"},
+        {
+            "project_id": first["id"],
+            "owner_id": "owner-1",
+            "file_path": "tests/test_server.py",
+            "summary": "Dashboard tests",
+            "symbols": ["test_dashboard_http_endpoints_and_security_headers"],
+        },
     )
     storage.insert(
         "file_relations",
@@ -58,7 +70,6 @@ def _storage_with_tasks(tmp_path) -> tuple[SQLiteStorage, dict[str, object], dic
             "source_file": "src/server.py",
             "target_file": "tests/test_server.py",
             "relation_type": "tested_by",
-            "confidence": 0.9,
         },
     )
     return storage, first, second
@@ -143,8 +154,16 @@ def test_dashboard_http_endpoints_and_security_headers(tmp_path) -> None:
             graph = json.loads(response.read())
             assert response.status == 200
             assert any(edge["relation"] == "tested_by" for edge in graph["edges"])
+            assert any(node["kind"] == "symbol" for node in graph["nodes"])
             assert len(graph["nodes"]) <= 10
             assert graph["limits"] == {"max_nodes": 10, "max_edges": 30}
+        with urlopen(
+            f"{base}/api/graph/context?project_id={first['id']}&select=file_memory:", timeout=5
+        ) as response:
+            context = json.loads(response.read())
+            assert response.status == 200
+            assert context["read_only"] is True
+            assert context["nodes"]
         with urlopen(f"{base}/export.csv?tables=tasks&limit=1", timeout=5) as response:
             assert response.headers.get_content_type() == "text/csv"
             assert b"table,record" in response.read()
