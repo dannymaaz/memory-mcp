@@ -157,12 +157,14 @@ def test_dashboard_http_endpoints_and_security_headers(tmp_path) -> None:
             assert any(node["kind"] == "symbol" for node in graph["nodes"])
             assert len(graph["nodes"]) <= 10
             assert graph["limits"] == {"max_nodes": 10, "max_edges": 30}
+        project_node_id = f"projects:{first['id']}"
         with urlopen(
-            f"{base}/api/graph/context?project_id={first['id']}&select=file_memory:", timeout=5
+            f"{base}/api/graph/context?project_id={first['id']}&select={project_node_id}", timeout=5
         ) as response:
             context = json.loads(response.read())
             assert response.status == 200
             assert context["read_only"] is True
+            assert context["selection"] == [project_node_id]
             assert context["nodes"]
         with urlopen(f"{base}/export.csv?tables=tasks&limit=1", timeout=5) as response:
             assert response.headers.get_content_type() == "text/csv"
