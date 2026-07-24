@@ -7,6 +7,7 @@ import argparse
 from . import cli
 from .code_intelligence import install_code_intelligence
 from .deployment_risk import install_deployment_risk
+from .deployment_storage import install_deployment_storage
 from .duplicate_intelligence import install_duplicate_intelligence
 from .embedding_lifecycle import install_embedding_lifecycle
 from .git_verification import install_git_verification
@@ -17,6 +18,7 @@ from .session_lifecycle import install_session_lifecycle
 
 def command_serve(_args: argparse.Namespace) -> int:
     """Run the MCP server after installing runtime integrations."""
+    install_deployment_storage()
     from src import server as server_module
 
     install_security_boundaries(server_module)
