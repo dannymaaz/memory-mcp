@@ -50,6 +50,7 @@ Issues = "https://github.com/dannymaaz/memory-mcp/issues"
 [project.scripts]
 memory-mcp = "persistent_memory_mcp.runtime:main"
 persistent-memory-mcp = "persistent_memory_mcp.runtime:main"
+memory-mcp-dashboard = "persistent_memory_mcp.dashboard:main"
 
 [tool.setuptools]
 include-package-data = true
