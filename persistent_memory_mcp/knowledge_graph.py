@@ -9,6 +9,7 @@ from typing import Any, Mapping, Sequence
 
 MAX_GRAPH_NODES = 500
 MAX_GRAPH_EDGES = 1500
+MAX_CONTEXT_CHARS = 12000
 
 _ENTITY_TABLES = {
     "projects": "project",
@@ -64,6 +65,26 @@ def _matches(row: Mapping[str, Any], query: str) -> bool:
 def _status_flags(row: Mapping[str, Any]) -> tuple[bool, bool]:
     verification = str(row.get("verification_status") or row.get("status") or "").casefold()
     return verification == "stale", verification == "contradicted"
+
+
+def _symbol_names(row: Mapping[str, Any]) -> list[str]:
+    raw = row.get("symbols")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = [raw]
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return []
+    names: list[str] = []
+    for item in raw:
+        if isinstance(item, Mapping):
+            value = item.get("qualified_name") or item.get("name") or item.get("id")
+        else:
+            value = item
+        if value:
+            names.append(str(value)[:160])
+    return list(dict.fromkeys(names))[:100]
 
 
 def build_knowledge_graph(
@@ -128,6 +149,16 @@ def build_knowledge_graph(
             )
             if table == "file_memory" and row.get("file_path"):
                 file_nodes[(row_project, str(row["file_path"]))] = node_id
+                for index, symbol_name in enumerate(_symbol_names(row)):
+                    symbol_id = f"symbol:{node_id}:{index}:{symbol_name}"
+                    nodes[symbol_id] = GraphNode(
+                        id=symbol_id,
+                        kind="symbol",
+                        label=symbol_name,
+                        project_id=row_project,
+                        metadata={"file_node": node_id, "file_path": row.get("file_path")},
+                    )
+                    edges.append(GraphEdge(node_id, symbol_id, "defines"))
             project_node = project_nodes.get(row_project or "")
             if project_node:
                 edges.append(GraphEdge(project_node, node_id, "contains"))
@@ -202,4 +233,35 @@ def focus_subgraph(
         "edges": [edge for edge in edges if edge["source"] in visited and edge["target"] in visited],
         "selection": selected,
         "depth": depth,
+    }
+
+
+def compact_graph_context(
+    graph: Mapping[str, Sequence[Mapping[str, Any]]],
+    node_ids: Sequence[str],
+    *,
+    depth: int = 1,
+    max_nodes: int = 50,
+    max_chars: int = 6000,
+) -> dict[str, Any]:
+    """Build deterministic, bounded, read-only context from an explicit graph selection."""
+    if not 1 <= max_chars <= MAX_CONTEXT_CHARS:
+        raise ValueError(f"max_chars must be between 1 and {MAX_CONTEXT_CHARS}")
+    focused = focus_subgraph(graph, node_ids, depth=depth, max_nodes=max_nodes)
+    lines: list[str] = []
+    for node in focused["nodes"]:
+        flags = [name for name in ("stale", "contradicted", "orphan") if node.get(name)]
+        suffix = f" [{', '.join(flags)}]" if flags else ""
+        lines.append(f"- {node.get('kind')}: {node.get('label')}{suffix}")
+    for edge in focused["edges"]:
+        lines.append(f"- relation: {edge.get('source')} --{edge.get('relation')}--> {edge.get('target')}")
+    text = "\n".join(lines)
+    truncated = len(text) > max_chars
+    if truncated:
+        text = text[:max_chars].rstrip()
+    return {
+        **focused,
+        "context": text,
+        "truncated": truncated,
+        "read_only": True,
     }
