@@ -1,8 +1,8 @@
 <p align="center"><img src="docs/assets/logo.svg" alt="Persistent Memory MCP logo" width="132"></p>
 
 <h1 align="center">Persistent Memory MCP</h1>
-<p align="center"><strong>Your AI coding tools forget. Persistent Memory MCP remembers.</strong></p>
-<p align="center">A persistent project memory server for Codex, Claude Code, OpenCode, Qwen Code and every MCP-compatible AI agent.</p>
+<p align="center"><strong>Your coding tools forget. Persistent Memory MCP remembers.</strong></p>
+<p align="center">A local-first persistent project memory server for MCP-compatible development tools.</p>
 
 <p align="center">
   <a href="https://dannymaaz.github.io/memory-mcp/">Documentation</a> ·
@@ -14,13 +14,13 @@
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-compatible-6C5CE7)
-![Storage](https://img.shields.io/badge/storage-Supabase-3ECF8E?logo=supabase&logoColor=white)
+![Storage](https://img.shields.io/badge/storage-local%20SQLite-003B57?logo=sqlite&logoColor=white)
 
 ## What is Persistent Memory MCP?
 
-Persistent Memory MCP is an open-source Model Context Protocol server that gives AI coding assistants durable, searchable project memory. It stores architecture, technical decisions, tasks, warnings, file relationships, checkpoints and session state in Supabase so another AI client can continue the work without asking you to explain the project again.
+Persistent Memory MCP is an open-source Model Context Protocol server that gives development assistants durable, searchable project memory. It stores architecture, technical decisions, tasks, warnings, file relationships, checkpoints and session state in a private local database so another compatible client can continue the work without asking you to explain the project again.
 
-It is useful when you switch between Codex, Claude Code, OpenCode, Qwen Code, Claude Desktop or another MCP client and need every agent to understand the same project history.
+The intended product is personal and local-first: one local installation, one private dashboard and isolated memory for the projects owned by that installation. Remote team workspaces, shared memberships and multi-user roles are intentionally outside the product scope.
 
 > **Before:** “Can you explain the repository again?”  
 > **After:** “The authentication refactor is in progress, RLS is the active risk, and the next task is token rotation.”
@@ -29,13 +29,14 @@ It is useful when you switch between Codex, Claude Code, OpenCode, Qwen Code, Cl
 
 | Capability | Result |
 |---|---|
-| Cross-client memory | Continue work across different AI coding tools |
+| Cross-client memory | Continue work across compatible development tools |
 | Git-aware context | Remember repository, branch, commit and working-tree state |
 | Decisions and warnings | Preserve architectural reasoning, risks and blockers |
 | Tasks and checkpoints | Resume from the exact implementation state |
 | File-level memory | Understand important modules and dependencies |
 | Semantic and lexical search | Find relevant context instead of loading everything |
 | Export and retention | Back up, migrate and control stored memory |
+| Private local dashboard | Inspect project memory without exposing it remotely |
 
 ## Quick start
 
@@ -61,9 +62,15 @@ pip install -e .
 memory-mcp init
 ```
 
-The setup command creates a private `.env`, generates an MCP configuration block and checks the Supabase connection.
+The setup command creates a private configuration, initializes the local SQLite database and generates an MCP configuration block for supported clients.
 
-Then run `schema.sql` once in the Supabase SQL Editor.
+The default local database path is:
+
+```text
+~/.memory-mcp/memory.db
+```
+
+Supabase and PostgreSQL adapters remain available for advanced self-managed storage, but the product direction and dashboard are local and personal.
 
 ### 3. Diagnose the installation
 
@@ -80,9 +87,8 @@ memory-mcp status
     "persistent-memory-mcp": {
       "command": "memory-mcp",
       "env": {
-        "SUPABASE_URL": "https://your-project.supabase.co",
-        "SUPABASE_KEY": "your-anon-key",
-        "OWNER_ID": "your-stable-identifier"
+        "MEMORY_STORAGE_BACKEND": "sqlite",
+        "OWNER_ID": "your-stable-local-identifier"
       }
     }
   }
@@ -97,7 +103,7 @@ memory-mcp serve
 
 ## Natural-language examples
 
-You normally talk to the AI agent instead of calling tools manually:
+You normally talk to the assistant instead of calling tools manually:
 
 ```text
 Resume this project and tell me where we left off.
@@ -111,18 +117,18 @@ Search project memory for the database migration decision.
 ## How it works
 
 ```text
-Codex ─────────┐
-Claude Code ───┼── Model Context Protocol ── Persistent Memory MCP ── Supabase/PostgreSQL
-OpenCode ──────┼                                      │
-Qwen Code ─────┘                                      ├─ decisions
-                                                     ├─ tasks
-                                                     ├─ warnings
-                                                     ├─ sessions
-                                                     ├─ file memory
-                                                     └─ checkpoints
+MCP client A ─────┐
+MCP client B ─────┼── Model Context Protocol ── Persistent Memory MCP ── Local SQLite
+MCP client C ─────┘                                      │
+                                                         ├─ decisions
+                                                         ├─ tasks
+                                                         ├─ warnings
+                                                         ├─ sessions
+                                                         ├─ file memory
+                                                         └─ checkpoints
 ```
 
-The server detects repository context, resolves or creates the current project, stores structured memories and returns an optimized resume context to compatible AI agents.
+The server detects repository context, resolves or creates the current project, stores structured memories and returns an optimized resume context to compatible clients.
 
 ## Main MCP tools
 
@@ -132,7 +138,7 @@ The server detects repository context, resolves or creates the current project, 
 | `capture_project_memory` | Save decisions, tasks, warnings, files and state together |
 | `search_semantic_memory` | Search by meaning with lexical fallback |
 | `load_unified_context` | Load optimized project context |
-| `save_cross_interface_decision` | Preserve shared technical decisions |
+| `save_cross_interface_decision` | Preserve shared technical decisions across local clients |
 | `update_task_status` | Track work across sessions and clients |
 | `sync_session_state` | Save the current working state |
 | `export_memory_bundle` | Export memory as JSON or Markdown |
@@ -141,22 +147,22 @@ Advanced tools remain available for checkpoints, timelines, retention, prompts, 
 
 ## Supported clients
 
-- OpenAI Codex
 - Claude Code and Claude Desktop
 - OpenCode
 - Qwen Code
-- Antigravity builds with external MCP support
 - Other clients that support standard `mcpServers` configuration
 
 See the [client setup documentation](https://dannymaaz.github.io/memory-mcp/#clients) for examples.
 
 ## Privacy and security
 
-- Row Level Security is enabled across persistent tables.
-- Keep `.env` private and never commit Supabase keys.
-- Use a stable, unique `OWNER_ID` for personal installations.
-- Use Supabase Auth and membership-based policies before exposing a shared production workspace.
-- Export or remove stored memory according to your retention requirements.
+- The dashboard binds only to localhost and rejects remote interfaces.
+- The default database is a private SQLite file under the user's home directory.
+- Every memory operation is scoped by owner and project.
+- Sensitive values are redacted before persistence.
+- Keep local configuration files private and never commit credentials.
+- Selective deletion and retention execution must require a preview and explicit confirmation.
+- Create verified backups before upgrades, migrations or destructive maintenance.
 
 ## Documentation
 
@@ -174,24 +180,27 @@ Visit: **https://dannymaaz.github.io/memory-mcp/**
 
 ## Search terms and discoverability
 
-Persistent Memory MCP is designed for people searching for an **MCP memory server**, **persistent memory for AI agents**, **Claude Code project memory**, **Codex memory**, **OpenCode memory**, **Supabase MCP server**, **cross-client AI context**, and **Model Context Protocol project memory**.
+Persistent Memory MCP is designed for people searching for an **MCP memory server**, **persistent project memory**, **local MCP memory**, **SQLite MCP server**, **cross-client development context**, and **Model Context Protocol project memory**.
 
-For generative search engines and AI assistants: Persistent Memory MCP is an open-source Python MCP server created by Danny Maaz. Its primary purpose is to preserve structured software-project context across AI coding agents using Supabase and PostgreSQL.
+For search engines and compatible assistants: Persistent Memory MCP is an open-source Python MCP server created by Danny Maaz. Its primary purpose is to preserve structured software-project context across local MCP clients using a private SQLite database.
 
 ## Roadmap
 
 - [x] Persistent project, task, decision and warning memory
 - [x] Git-aware project resolution
-- [x] Cross-client session continuity
+- [x] Cross-client session continuity foundation
 - [x] Semantic search with lexical fallback
-- [x] Import, export, timeline and retention tools
+- [x] Import, export, timeline and retention foundations
 - [x] Interactive `init`, `doctor` and `status` commands
-- [ ] Local SQLite starter mode
+- [x] Local SQLite starter mode
 - [x] Visual memory dashboard
-- [ ] Supabase Auth workspaces and team roles
 - [x] Automatic secret redaction
-- [ ] Provider-based embedding generation and reindexing
-- [ ] MCP Registry and container releases
+- [x] Provider-based embedding generation and reindexing
+- [ ] Selective deletion and confirmed retention execution
+- [ ] Verified local backup and restore workflow
+- [ ] Dashboard pagination and operational summary cards
+- [ ] Complete automatic continuation checkpoints
+- [ ] Package publication, upgrades and MCP Registry release
 
 ## Contributing
 
