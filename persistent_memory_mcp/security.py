@@ -57,6 +57,14 @@ class SanitizedMemory:
     expires_at: str
 
 
+@dataclass(frozen=True)
+class RedactedValue:
+    """A recursively redacted value plus detected secret categories."""
+
+    value: Any
+    redactions: tuple[str, ...]
+
+
 def _redact_secrets(value: str) -> tuple[str, tuple[str, ...]]:
     redactions: list[str] = []
     sanitized = value
@@ -65,6 +73,47 @@ def _redact_secrets(value: str) -> tuple[str, tuple[str, ...]]:
         if count:
             redactions.extend([label] * count)
     return sanitized, tuple(redactions)
+
+
+def redact_sensitive_value(value: Any) -> RedactedValue:
+    """Recursively redact secret-bearing strings while preserving container shape.
+
+    Mapping keys are intentionally left unchanged. Lists and tuples retain their
+    original container type. Other values pass through without modification.
+    """
+
+    if isinstance(value, str):
+        redacted, labels = _redact_secrets(value)
+        return RedactedValue(redacted, labels)
+
+    if isinstance(value, Mapping):
+        redactions: list[str] = []
+        clean: dict[Any, Any] = {}
+        for key, item in value.items():
+            result = redact_sensitive_value(item)
+            clean[key] = result.value
+            redactions.extend(result.redactions)
+        return RedactedValue(clean, tuple(redactions))
+
+    if isinstance(value, list):
+        redactions = []
+        clean_list: list[Any] = []
+        for item in value:
+            result = redact_sensitive_value(item)
+            clean_list.append(result.value)
+            redactions.extend(result.redactions)
+        return RedactedValue(clean_list, tuple(redactions))
+
+    if isinstance(value, tuple):
+        redactions = []
+        clean_items: list[Any] = []
+        for item in value:
+            result = redact_sensitive_value(item)
+            clean_items.append(result.value)
+            redactions.extend(result.redactions)
+        return RedactedValue(tuple(clean_items), tuple(redactions))
+
+    return RedactedValue(value, ())
 
 
 def _looks_instruction_like(value: str) -> bool:
