@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Mapping, Sequence
 
 MAX_GRAPH_NODES = 500
@@ -19,6 +19,13 @@ _ENTITY_TABLES = {
     "tasks": "task",
     "warnings": "warning",
     "sessions": "session",
+}
+
+_OVERLAY_KEYS = {
+    "duplicate_of": "duplicate_of",
+    "duplicates": "duplicate_of",
+    "contradicts": "contradicts",
+    "contradicted_by": "contradicts",
 }
 
 
@@ -67,6 +74,36 @@ def _status_flags(row: Mapping[str, Any]) -> tuple[bool, bool]:
     return verification == "stale", verification == "contradicted"
 
 
+def _decoded_metadata(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    raw = row.get("metadata")
+    if isinstance(raw, Mapping):
+        return raw
+    if isinstance(raw, str) and raw:
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(decoded, Mapping):
+            return decoded
+    return {}
+
+
+def _reference_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        raw = value.get("node_id") or value.get("id")
+        return [str(raw)] if raw else []
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        result: list[str] = []
+        for item in value:
+            result.extend(_reference_values(item))
+        return result
+    return [str(value)]
+
+
 def _symbol_names(row: Mapping[str, Any]) -> list[str]:
     raw = row.get("symbols")
     if isinstance(raw, str):
@@ -85,6 +122,14 @@ def _symbol_names(row: Mapping[str, Any]) -> list[str]:
         if value:
             names.append(str(value)[:160])
     return list(dict.fromkeys(names))[:100]
+
+
+def _resolve_overlay_target(reference: str, table: str, node_ids: set[str]) -> str | None:
+    candidates = (reference, f"{table}:{reference}")
+    for candidate in candidates:
+        if candidate in node_ids:
+            return candidate
+    return None
 
 
 def build_knowledge_graph(
@@ -107,6 +152,7 @@ def build_knowledge_graph(
     edges: list[GraphEdge] = []
     project_nodes: dict[str, str] = {}
     file_nodes: dict[tuple[str | None, str], str] = {}
+    overlay_requests: list[tuple[str, str, str, str]] = []
 
     for row in tables.get("projects", ()):
         if project_id and str(row.get("id")) != project_id:
@@ -137,6 +183,7 @@ def build_knowledge_graph(
                 continue
             node_id = _record_id(table, row)
             stale, contradicted = _status_flags(row)
+            metadata = _decoded_metadata(row)
             nodes[node_id] = GraphNode(
                 id=node_id,
                 kind=kind,
@@ -147,6 +194,9 @@ def build_knowledge_graph(
                 contradicted=contradicted,
                 metadata={"source_table": table},
             )
+            for key, relation in _OVERLAY_KEYS.items():
+                for reference in _reference_values(metadata.get(key)):
+                    overlay_requests.append((node_id, table, relation, reference))
             if table == "file_memory" and row.get("file_path"):
                 file_nodes[(row_project, str(row["file_path"]))] = node_id
                 for index, symbol_name in enumerate(_symbol_names(row)):
@@ -179,6 +229,23 @@ def build_knowledge_graph(
                 )
             )
 
+    node_ids = set(nodes)
+    overlay_counts = {"duplicate_of": 0, "contradicts": 0}
+    seen_overlays: set[tuple[str, str, str]] = set()
+    for source, table, relation, reference in overlay_requests:
+        target = _resolve_overlay_target(reference, table, node_ids)
+        if not target or target == source:
+            continue
+        edge_key = (source, target, relation)
+        if edge_key in seen_overlays:
+            continue
+        seen_overlays.add(edge_key)
+        edges.append(GraphEdge(source, target, relation))
+        overlay_counts[relation] += 1
+        if relation == "contradicts":
+            nodes[source] = replace(nodes[source], contradicted=True)
+            nodes[target] = replace(nodes[target], contradicted=True)
+
     ordered_nodes = sorted(nodes.values(), key=lambda item: (item.kind, item.label.casefold(), item.id))
     kept = {item.id for item in ordered_nodes[:max_nodes]}
     ordered_edges = sorted(
@@ -193,6 +260,7 @@ def build_knowledge_graph(
     return {
         "nodes": [asdict(node) for node in final_nodes],
         "edges": [asdict(edge) for edge in ordered_edges],
+        "overlays": overlay_counts,
         "limits": {"max_nodes": max_nodes, "max_edges": max_edges},
         "truncated": len(ordered_nodes) > max_nodes or len(edges) > max_edges,
     }
