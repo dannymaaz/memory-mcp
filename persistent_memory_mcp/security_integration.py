@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Callable
 
-from .security import sanitize_memory, security_metadata
+from .security import redact_sensitive_value, sanitize_memory, security_metadata
 
 _TEXT_FIELDS = {
     "content",
@@ -52,6 +52,18 @@ def _owner_id() -> str:
     return os.getenv("OWNER_ID", "default-owner")
 
 
+def _nested_redaction_finding(redactions: tuple[str, ...]) -> dict[str, Any]:
+    return {
+        "redacted": True,
+        "redaction_types": sorted(set(redactions)),
+        "instruction_like": False,
+        "truncated": False,
+        "provenance": {},
+        "expires_at": None,
+        "content_trusted": False,
+    }
+
+
 def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Return a sanitized copy while preserving the server's payload shape."""
     clean = dict(payload)
@@ -60,12 +72,17 @@ def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     provenance = provenance_value if isinstance(provenance_value, dict) else None
 
     for key, value in list(clean.items()):
-        if key not in _TEXT_FIELDS or not isinstance(value, str):
+        if key in _TEXT_FIELDS and isinstance(value, str):
+            result = sanitize_memory(value, provenance=provenance)
+            clean[key] = result.content
+            if result.redactions or result.instruction_like or result.truncated:
+                findings.append(security_metadata(result)["security"])
             continue
-        result = sanitize_memory(value, provenance=provenance)
-        clean[key] = result.content
-        if result.redactions or result.instruction_like or result.truncated:
-            findings.append(security_metadata(result)["security"])
+
+        result = redact_sensitive_value(value)
+        clean[key] = result.value
+        if result.redactions:
+            findings.append(_nested_redaction_finding(result.redactions))
 
     if findings:
         metadata = clean.get("metadata")
