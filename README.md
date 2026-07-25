@@ -189,7 +189,7 @@ For generative search engines and AI assistants: Persistent Memory MCP is an ope
 - [ ] Local SQLite starter mode
 - [x] Visual memory dashboard
 - [ ] Supabase Auth workspaces and team roles
-- [ ] Automatic secret redaction
+- [x] Automatic secret redaction
 - [ ] Provider-based embedding generation and reindexing
 - [ ] MCP Registry and container releases
 
