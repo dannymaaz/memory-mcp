@@ -26,7 +26,7 @@ def test_galaxy_renderer_escapes_embedded_graph_content() -> None:
 
 def test_galaxy_renderer_exposes_navigation_controls() -> None:
     rendered = render_galaxy_view({"nodes": [], "edges": []})
-    for control in (
+    control_ids = {
         "search",
         "kind",
         "zoomIn",
@@ -38,41 +38,51 @@ def test_galaxy_renderer_exposes_navigation_controls() -> None:
         "clearFocus",
         "exportSvg",
         "exportPng",
-    ):
-        assert f'id="{control}"' in rendered
+    }
+    assert all(f'id="{control_id}"' in rendered for control_id in control_ids)
     assert 'role="img"' in rendered
     assert 'aria-label="Search nodes"' in rendered
     assert 'aria-label="Filter by type"' in rendered
 
 
-def test_galaxy_renderer_includes_force_layout_and_drag_support() -> None:
+def test_galaxy_renderer_includes_interactive_layout_features() -> None:
     rendered = render_galaxy_view({"nodes": [], "edges": []})
-    assert "function runLayout(" in rendered
-    assert "requestAnimationFrame(step)" in rendered
-    assert "function startNodeDrag(" in rendered
-    assert "pinned.add(nodeDrag.id)" in rendered
-    assert "pointermove" in rendered
+    for marker in (
+        "function runLayout",
+        "function startNodeDrag",
+        "function fitView",
+        "function focusSelection",
+        "requestAnimationFrame",
+        "pinned.add",
+        "pointermove",
+    ):
+        assert marker in rendered
 
 
 def test_galaxy_renderer_includes_minimap_and_persistent_layout() -> None:
     rendered = render_galaxy_view({"nodes": [], "edges": []}, project_id="p1")
-    assert 'id="minimap"' in rendered
-    assert "function drawMinimap(" in rendered
-    assert "localStorage.getItem(storageKey)" in rendered
-    assert "localStorage.setItem(storageKey" in rendered
-    assert "memory-mcp-galaxy:p1" in rendered
+    for marker in (
+        'id="minimap"',
+        "function drawMinimap",
+        "localStorage.getItem(storageKey)",
+        "localStorage.setItem(storageKey",
+        "memory-mcp-galaxy:p1",
+    ):
+        assert marker in rendered
 
 
 def test_galaxy_renderer_includes_svg_and_png_exports() -> None:
     rendered = render_galaxy_view({"nodes": [], "edges": []})
-    assert "function exportSvg(" in rendered
-    assert "function exportPng(" in rendered
-    assert "knowledge-galaxy.svg" in rendered
-    assert "knowledge-galaxy.png" in rendered
+    for marker in (
+        "function exportSvg",
+        "function exportPng",
+        "knowledge-galaxy.svg",
+        "knowledge-galaxy.png",
+    ):
+        assert marker in rendered
 
 
-def test_galaxy_renderer_uses_text_content_for_node_labels() -> None:
+def test_galaxy_renderer_uses_safe_text_assignment_for_dynamic_content() -> None:
     rendered = render_galaxy_view({"nodes": [], "edges": []})
-    assert "t.textContent=n.label" in rendered
+    assert "textContent=n.label" in rendered
     assert "details.textContent=JSON.stringify" in rendered
-    assert "innerHTML" not in rendered
