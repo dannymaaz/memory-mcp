@@ -187,7 +187,7 @@ For generative search engines and AI assistants: Persistent Memory MCP is an ope
 - [x] Import, export, timeline and retention tools
 - [x] Interactive `init`, `doctor` and `status` commands
 - [ ] Local SQLite starter mode
-- [ ] Visual memory dashboard
+- [x] Visual memory dashboard
 - [ ] Supabase Auth workspaces and team roles
 - [ ] Automatic secret redaction
 - [ ] Provider-based embedding generation and reindexing
