@@ -1,46 +1,65 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled after merged PR #9.
+Last reconciled after merged PR #21 and the product-scope decision recorded when PR #23 was closed without merge.
 
 ## Executive summary
 
-Persistent Memory MCP currently provides a strong technical foundation for persistent coding-agent memory: local and remote storage, safe multi-client installation, token-efficient context construction, project guardrails, hybrid-search infrastructure, session lifecycle management, Git-grounded verification and repository symbol impact analysis.
+Persistent Memory MCP provides a strong local-first technical foundation for durable project memory: private SQLite storage, safe multi-client installation, token-efficient context construction, project guardrails, hybrid search, session lifecycle management, Git-grounded verification, code intelligence, duplicate and contradiction detection, deployment history, evaluation tooling, a localhost-only dashboard and Galaxy knowledge visualization.
 
-It should currently be described as a **feature-complete technical foundation**, not as the final collaborative visual product. The dashboard, Galaxy View, teams, deployment history, contradiction workflows and publication lifecycle remain future milestones.
+The product is personal and local. It is not intended to become a collaborative SaaS, shared workspace service or multi-user dashboard. Remaining work should improve local data safety, recovery, operational completeness and distribution.
 
 ## Capability matrix
 
 | Capability | Status | Evidence in merged work | Remaining gap |
 |---|---|---|---|
 | Product CLI and client onboarding | Complete | PR #1 | Release publication and broader upgrade validation |
-| Security primitives | Partial | PR #2 | Apply to every server read/write path and add adversarial end-to-end tests |
-| SQLite local-first storage | Complete | PR #3 | Full behavioral parity validation against Supabase |
+| Security and isolation | Complete foundation | PR #2, PR #11, PR #20 | Selective deletion execution and broader adversarial end-to-end tests |
+| SQLite local-first storage | Complete | PR #3 | Verified backup, restore and upgrade validation |
 | Safe client installation | Complete | PR #4 | Final clean-install and upgrade matrix |
 | Token-efficient context | Complete | PR #5 | Continue quality benchmarking as new memory types are added |
-| Project and deployment guardrails | Complete foundation | PR #5 | Add persisted deployment history and risk-aware execution |
-| Hybrid search | Partial | PR #6 | Persisted embedding lifecycle, reindexing, provider resilience and quality benchmarks |
+| Project and deployment guardrails | Complete | PR #5, PR #14 | Additional real-world regression scenarios |
+| Hybrid search and embeddings | Complete foundation | PR #6, PR #12 | Background indexing and quality/cost benchmarks |
 | Automatic sessions | Partial | PR #7 | Automatic project resolution, milestone capture and complete continuation checkpoints |
-| Git verification | Complete foundation | PR #8 | Richer PR/rebase/rename explanations and direct checkpoint-to-PR binding |
+| Git verification | Complete foundation | PR #8 | Richer PR/rebase/rename explanations and checkpoint-to-PR binding |
 | Code intelligence | Partial | PR #9 | Persistence, historical symbol tracking and links to tests/tasks/deployments |
-| Duplicate and contradiction intelligence | Planned | Future PR #11 | Full implementation |
-| Deployment history and action risk | Planned | Future PR #12 | Full implementation |
-| Evaluation and provenance suite | Planned | Future PR #13 | Full implementation |
-| Local dashboard | Planned | Future PR #14 | Full implementation |
-| Galaxy knowledge view | Planned | Future PR #15 | Full implementation |
-| Teams and remote dashboard | Planned | Future PR #16 | Full implementation |
-| Distribution and MCP Registry | Planned | Future PR #17 | Full implementation |
+| Duplicate and contradiction intelligence | Complete | PR #13 | Broader domain-specific regression coverage |
+| Deployment history and action risk | Complete | PR #14 | Broader deployment adapter coverage |
+| Evaluation and provenance suite | Complete | PR #15 | Expand scenarios as features evolve |
+| Local dashboard | Partial | PR #16 | Pagination, summary cards, safe maintenance actions and error-state polish |
+| Galaxy knowledge view | Complete | PR #17, PR #18 | Performance and usability refinement |
+| Nested secret redaction | Complete | PR #20 | Continue adversarial coverage |
+| Teams and remote collaborative dashboard | Out of scope | PR #23 closed without merge; issue #22 not planned | No implementation planned |
+| Distribution and MCP Registry | Planned | Future work | Release automation, upgrade validation and registry publication |
 
 ## Current MCP-facing capabilities
 
-The runtime currently integrates the following higher-level capability families:
+The runtime integrates the following higher-level capability families:
 
-- semantic-memory search with hybrid-ranking infrastructure;
+- semantic-memory search with hybrid ranking and persisted embeddings;
 - automatic session reuse, heartbeat, stale-session closure and interface handoff;
 - Git-grounded verification of returned memory;
-- repository symbol indexing;
-- bounded symbol and file impact analysis.
+- repository symbol indexing and bounded impact analysis;
+- duplicate and contradiction recommendations;
+- deployment history and risk-aware planning;
+- local evaluation and provenance reporting;
+- local-only dashboard and Galaxy visualization.
 
-These runtime integrations are intentionally additive: they wrap or register focused capabilities without replacing the core server implementation wholesale.
+These integrations are additive and remain scoped to the active local owner and project.
+
+## Product scope
+
+Persistent Memory MCP is designed around the following constraints:
+
+- one personal installation;
+- local SQLite as the default persistence backend;
+- localhost-only dashboard access;
+- project and owner isolation inside the installation;
+- no workspace invitations or team memberships;
+- no owner/admin/member/reader authorization hierarchy;
+- no public remote collaborative dashboard;
+- no billing or organization-management surface.
+
+Supabase and PostgreSQL adapters may remain available for advanced self-managed persistence, but they do not change the personal local product direction.
 
 ## Definition of done for the technical core
 
@@ -57,24 +76,23 @@ The technical core will be considered complete when all of the following are tru
 
 ## Definition of done for the complete product
 
-The complete product additionally requires:
+The complete local product additionally requires:
 
-- a local operational dashboard;
+- a polished localhost-only operational dashboard;
 - Galaxy knowledge visualization;
-- team authentication, roles and shared-memory policies;
-- deployment history and rollback provenance;
-- release automation, Docker distribution and MCP Registry publication;
-- documented backup, restore, migration and disaster recovery.
+- selective deletion and confirmed retention execution;
+- verified local backup, restore, migration and disaster recovery;
+- complete automatic continuation checkpoints;
+- release automation, package publication and MCP Registry submission;
+- clean install, upgrade and uninstall validation.
 
 ## Recommended implementation order
 
-1. Close security and isolation integration gaps.
-2. Complete embeddings and automatic continuation checkpoints.
-3. Persist and enrich the symbol graph.
-4. Implement duplicate and contradiction intelligence.
-5. Add deployment history and action-risk controls.
-6. Build the evaluation suite before visual dashboards.
-7. Build the local dashboard and Galaxy View.
-8. Add teams, remote deployment and publication.
+1. Expose selective deletion and confirmed retention execution.
+2. Add verified SQLite backup and restore.
+3. Complete dashboard pagination, summary cards and safe local maintenance actions.
+4. Complete automatic project resolution and continuation checkpoints.
+5. Persist and enrich the symbol graph across repository revisions.
+6. Add release automation, upgrade validation and registry publication.
 
-This order protects data integrity and evaluation quality before adding collaborative and visual surfaces.
+This order protects local data first, then improves recovery and day-to-day operation before final publication.
