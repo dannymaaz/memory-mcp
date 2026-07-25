@@ -12,6 +12,19 @@ create table if not exists workspaces (
   unique(owner_id, slug)
 );
 
+create table if not exists workspace_memberships (
+  id text primary key default (lower(hex(randomblob(16)))),
+  workspace_id text not null references workspaces(id) on delete cascade,
+  user_id text not null,
+  role text not null check(role in ('owner', 'admin', 'member', 'reader')),
+  status text not null default 'active' check(status in ('active', 'suspended', 'removed')),
+  added_by text not null default '',
+  metadata text not null default '{}',
+  created_at text not null default (datetime('now')),
+  updated_at text not null default (datetime('now')),
+  unique(workspace_id, user_id)
+);
+
 create table if not exists projects (
   id text primary key default (lower(hex(randomblob(16)))),
   owner_id text not null,
@@ -249,6 +262,8 @@ create table if not exists retention_policies (
   unique(project_id)
 );
 
+create index if not exists idx_workspace_memberships_user on workspace_memberships(user_id, status);
+create index if not exists idx_workspace_memberships_workspace_role on workspace_memberships(workspace_id, role);
 create index if not exists idx_projects_owner_slug on projects(owner_id, slug);
 create index if not exists idx_decisions_scope on decisions(owner_id, project_id, created_at desc);
 create index if not exists idx_tasks_scope on tasks(owner_id, project_id, status);
