@@ -22,7 +22,19 @@ def _tables() -> dict[str, list[dict[str, object]]]:
             {"id": "f2", "project_id": "p1", "file_path": "tests/test_server.py"},
         ],
         "decisions": [
-            {"id": "d1", "project_id": "p1", "title": "Use SQLite", "verification_status": "stale"}
+            {"id": "d1", "project_id": "p1", "title": "Use SQLite", "verification_status": "stale"},
+            {
+                "id": "d2",
+                "project_id": "p1",
+                "title": "Use PostgreSQL",
+                "metadata": {"contradicts": "d1"},
+            },
+            {
+                "id": "d3",
+                "project_id": "p1",
+                "title": "Keep SQLite",
+                "metadata": {"duplicate_of": "decisions:d1", "duplicates": ["decisions:d1"]},
+            },
         ],
         "tasks": [{"id": "t1", "project_id": "p1", "title": "Add graph view", "status": "pending"}],
         "warnings": [{"id": "w1", "project_id": "p1", "title": "Check migration"}],
@@ -49,7 +61,28 @@ def test_build_graph_creates_typed_nodes_and_edges() -> None:
     assert "tested_by" in relations
     stale = next(node for node in graph["nodes"] if node["id"] == "decisions:d1")
     assert stale["stale"] is True
-    assert stale["contradicted"] is False
+
+
+def test_graph_adds_duplicate_and_contradiction_overlays() -> None:
+    graph = build_knowledge_graph(_tables(), project_id="p1")
+    overlays = {(edge["source"], edge["target"], edge["relation"]) for edge in graph["edges"]}
+    assert ("decisions:d2", "decisions:d1", "contradicts") in overlays
+    assert ("decisions:d3", "decisions:d1", "duplicate_of") in overlays
+    assert graph["overlays"] == {"duplicate_of": 1, "contradicts": 1}
+    contradicted = {
+        node["id"] for node in graph["nodes"] if node["contradicted"]
+    }
+    assert {"decisions:d1", "decisions:d2"} <= contradicted
+
+
+def test_invalid_overlay_references_are_ignored() -> None:
+    tables = _tables()
+    tables["tasks"].append(
+        {"id": "t2", "project_id": "p1", "title": "Unknown", "metadata": {"duplicate_of": "missing"}}
+    )
+    graph = build_knowledge_graph(tables)
+    assert graph["overlays"] == {"duplicate_of": 1, "contradicts": 1}
+    assert not any(edge["source"] == "tasks:t2" and edge["relation"] == "duplicate_of" for edge in graph["edges"])
 
 
 def test_build_graph_is_deterministic_and_bounded() -> None:
