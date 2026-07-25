@@ -1,12 +1,13 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap reflects the repository state through PR #16. It separates completed capabilities from partial integrations and future product work so that a merged foundation is not mistaken for a finished end-to-end feature.
+This roadmap reflects the repository state through PR #21 and the product-scope decision recorded after PR #23 was closed without merge. Persistent Memory MCP is a local-first personal application: one local installation, one private dashboard and no shared workspace or multi-user role model.
 
 ## Status legend
 
 - ✅ **Complete** — implemented, integrated and covered by repository tests.
 - 🟡 **Partial** — useful foundation exists, but one or more end-to-end paths remain.
 - ⬜ **Planned** — not implemented yet.
+- 🚫 **Out of scope** — intentionally excluded from the product direction.
 
 ## Delivered foundation
 
@@ -15,7 +16,7 @@ This roadmap reflects the repository state through PR #16. It separates complete
 - Python distribution renamed to `persistent-memory-mcp`.
 - `memory-mcp` and `persistent-memory-mcp` command aliases.
 - `init`, `doctor`, `status` and `serve` commands.
-- Configuration generation for Codex, Claude Code, OpenCode and Antigravity.
+- Configuration generation for supported MCP clients.
 - Package, documentation and Python 3.11–3.13 CI foundation.
 
 ### PR #2 — Security, isolation and retention foundation — 🟡 Partial
@@ -95,7 +96,7 @@ Remaining:
 - Save checkpoints before context exhaustion or client shutdown.
 - End sessions with completed work, pending work and the next safe action.
 - Add configurable checkpoint cadence and token thresholds.
-- Implement the complete shared continuation contract.
+- Implement the complete local continuation contract.
 
 ### PR #8 — Git-grounded memory verification — ✅ Complete
 
@@ -189,59 +190,112 @@ Completed:
 
 Remaining:
 
-- Add Supabase dashboard adapter parity.
 - Add summarized sensitivity, verification, staleness and token-savings cards.
 - Add selective deletion as a confirmed plan-only workflow.
 - Add explicit pagination cursors for large datasets.
+- Improve empty, loading and error states.
 
-## Current product position
-
-The secure local-first backend, context engine, session foundation, hybrid search, Git verification, code intelligence, duplicate detection, deployment-risk core, evaluation suite and local dashboard foundation are available. The project is suitable for technical evaluation and continued development, but it is not yet the complete dashboard-and-team product.
-
-## Next delivery milestones
-
-### PR #17 — Galaxy knowledge view — ⬜ Planned
+### PR #17 / PR #18 — Galaxy knowledge view — ✅ Complete
 
 - Animated project knowledge graph.
 - Nodes for projects, files, symbols, decisions, tasks, warnings and sessions.
 - Typed relationships, clustering, zoom, filters, focus mode and search.
-- Select subgraphs to build compact agent context.
-- Visualize duplicates, contradictions, stale memories and orphan nodes.
-- Enforce performance limits for large graphs.
+- Compact context selection from bounded subgraphs.
+- Duplicate, contradiction, stale-memory and orphan visualization.
+- Performance limits for large graphs.
 
-### PR #18 — Teams, roles and remote dashboard — ⬜ Planned
+### PR #20 — Nested secret redaction — ✅ Complete
 
-- Supabase Auth integration.
-- Workspace membership and invitations.
-- Owner, admin, member and reader roles.
-- Shared-project RLS policies.
-- Private and shared memories.
-- Audit trail and permission tests.
-- Secure remote dashboard deployment.
+- Redacts sensitive values inside nested dictionaries, lists and tuples.
+- Preserves payload shape and records security findings.
 
-### PR #19 — Distribution, deployment and publication — ⬜ Planned
+### PR #21 — Roadmap secret-redaction reconciliation — ✅ Complete
 
-- Docker image.
-- Render and Railway deployment guides.
-- Release automation and package publication.
+- Marks automatic secret redaction complete in the public roadmap.
+
+## Product scope decision
+
+### Teams, memberships, roles and remote collaborative dashboard — 🚫 Out of scope
+
+PR #23 was closed without merge and issue #22 was closed as not planned.
+
+Persistent Memory MCP is intended to remain:
+
+- a personal local installation;
+- backed by private local SQLite by default;
+- accessed through local MCP clients;
+- visualized through a localhost-only dashboard;
+- isolated by project and local owner identity.
+
+The following are not product milestones:
+
+- workspace membership and invitations;
+- owner/admin/member/reader roles;
+- multi-user shared memory;
+- public or remotely hosted collaborative dashboard;
+- billing or organization administration.
+
+## Current product position
+
+The secure local-first backend, context engine, session foundation, hybrid search, Git verification, code intelligence, duplicate detection, deployment-risk core, evaluation suite, local dashboard and Galaxy View are available. The remaining product work is focused on safe local data control, operational completeness, recovery and distribution.
+
+## Next delivery milestones
+
+### Next PR — Selective deletion and confirmed retention execution — ⬜ Planned
+
+- Expose bounded MCP tools for selective forget/delete planning.
+- Keep dry-run as the default and require explicit confirmation before mutation.
+- Display exact record counts, scopes and identifiers before deletion.
+- Reject owner/project scope expansion and stale confirmation tokens.
+- Record audit metadata for planned and executed operations.
+- Add adversarial and integration tests for accidental deletion prevention.
+- Document the workflow in public docs and Notion.
+
+### Verified local backup and restore — ⬜ Planned
+
+- Create consistent SQLite backups while WAL mode is active.
+- Validate source and backup integrity.
+- Refuse accidental overwrite during restore.
+- Support preview, explicit confirmation and rollback-safe restore.
+- Document migration and disaster recovery procedures.
+
+### Dashboard completion — ⬜ Planned
+
+- Add pagination cursors.
+- Add memory, verification, staleness, sensitivity, token and storage cards.
+- Add safe local maintenance actions backed by confirmation workflows.
+- Improve accessibility, empty states and error handling.
+
+### Automatic continuation completion — ⬜ Planned
+
+- Resolve active projects automatically.
+- Capture important session changes and checkpoints.
+- Persist the next safe action before shutdown or context exhaustion.
+- Validate continuation quality across supported local clients.
+
+### Distribution and publication — ⬜ Planned
+
+- Package publication and release automation.
 - MCP Registry submission.
 - Versioned upgrade and migration documentation.
-- Backup, restore and disaster-recovery documentation.
-- Optional privacy-preserving telemetry, disabled by default.
+- Clean installation, update and uninstall validation.
+- Optional Docker packaging only when it preserves localhost-only operation.
 
 ## Final product validation
 
 - [ ] Clean local installation and upgrade.
-- [x] Multi-client configuration, backup and rollback.
-- [ ] Full SQLite and Supabase behavioral parity.
-- [x] End-to-end cross-owner and cross-project isolation foundation.
-- [x] Sanitization on runtime write paths and poisoned-memory resistance foundation.
+- [x] Multi-client configuration, backup and rollback for client configuration.
+- [x] SQLite local-first storage.
+- [x] Owner/project isolation foundation.
+- [x] Runtime sanitization and poisoned-memory resistance foundation.
 - [ ] Selective deletion and confirmed retention execution.
+- [ ] Verified local backup and restore.
 - [ ] Complete automatic cross-client memory recovery.
 - [x] Git-grounded stale-memory classification foundation.
 - [ ] Persistent symbol-level duplicate avoidance and full impact analysis.
 - [x] Project, service and deployment-target guardrail foundation.
 - [x] Measurable token savings under regression thresholds.
-- [ ] Complete operational dashboard and Galaxy View.
-- [ ] Teams, roles and remote access.
-- [ ] Release, registry publication and disaster-recovery documentation.
+- [ ] Complete operational dashboard.
+- [x] Galaxy knowledge view.
+- [ ] Release and registry publication.
+- [x] Teams, roles and remote collaboration excluded from scope.
