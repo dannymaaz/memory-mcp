@@ -66,7 +66,8 @@ def test_galaxy_renderer_includes_minimap_and_persistent_layout() -> None:
         "function drawMinimap",
         "localStorage.getItem(storageKey)",
         "localStorage.setItem(storageKey",
-        "memory-mcp-galaxy:p1",
+        "const storageKey='memory-mcp-galaxy:'",
+        "String('p1')",
     ):
         assert marker in rendered
 
