@@ -6,6 +6,7 @@ import argparse
 
 from . import cli
 from .code_intelligence import install_code_intelligence
+from .deletion_integration import install_confirmed_deletion
 from .deployment_risk import install_deployment_risk
 from .deployment_storage import install_deployment_storage
 from .duplicate_intelligence import install_duplicate_intelligence
@@ -28,6 +29,7 @@ def command_serve(_args: argparse.Namespace) -> int:
     install_duplicate_intelligence(server_module)
     install_deployment_risk(server_module)
     install_agent_evaluation(server_module)
+    install_confirmed_deletion(server_module)
     install_git_verification(server_module)
     install_code_intelligence(server_module)
     install_session_lifecycle(server_module)

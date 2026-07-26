@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -12,9 +13,12 @@ from persistent_memory_mcp.isolation import (
     secure_payload,
 )
 from persistent_memory_mcp.retention import (
+    ConfirmationError,
     build_forget_plan,
+    create_confirmation_token,
     is_expired,
     select_retention_candidates,
+    validate_confirmation_token,
 )
 
 
@@ -122,9 +126,53 @@ def test_forget_plan_is_dry_run_and_deduplicated() -> None:
     assert plan.dry_run is True
     assert plan.record_ids == ("decision-1",)
     assert plan.count == 1
+    assert plan.fingerprint
+    assert plan.created_at
+    assert plan.expires_at
 
 
 def test_forget_plan_rejects_unknown_table() -> None:
     scope = normalize_scope("owner-a", project_id="project-1")
     with pytest.raises(ValueError):
         build_forget_plan("users", [], scope)
+
+
+def test_confirmation_token_validates_exact_plan() -> None:
+    now = datetime(2026, 7, 22, tzinfo=UTC)
+    scope = normalize_scope("owner-a", project_id="project-1")
+    record = {"id": "decision-1", "owner_id": "owner-a", "project_id": "project-1"}
+    plan = build_forget_plan("decisions", [record], scope, now=now)
+    token = create_confirmation_token(plan, secret="test-secret")
+    validate_confirmation_token(plan, token, secret="test-secret", now=now)
+
+
+def test_confirmation_rejects_modified_plan() -> None:
+    now = datetime(2026, 7, 22, tzinfo=UTC)
+    scope = normalize_scope("owner-a", project_id="project-1")
+    record = {"id": "decision-1", "owner_id": "owner-a", "project_id": "project-1"}
+    plan = build_forget_plan("decisions", [record], scope, now=now)
+    token = create_confirmation_token(plan, secret="test-secret")
+    modified = replace(plan, record_ids=("decision-1", "decision-2"))
+    with pytest.raises(ConfirmationError, match="changed"):
+        validate_confirmation_token(modified, token, secret="test-secret", now=now)
+
+
+def test_confirmation_rejects_expired_plan() -> None:
+    now = datetime(2026, 7, 22, tzinfo=UTC)
+    scope = normalize_scope("owner-a", project_id="project-1")
+    record = {"id": "decision-1", "owner_id": "owner-a", "project_id": "project-1"}
+    plan = build_forget_plan(
+        "decisions",
+        [record],
+        scope,
+        confirmation_ttl_seconds=1,
+        now=now,
+    )
+    token = create_confirmation_token(plan, secret="test-secret")
+    with pytest.raises(ConfirmationError, match="expired"):
+        validate_confirmation_token(
+            plan,
+            token,
+            secret="test-secret",
+            now=now + timedelta(seconds=2),
+        )
