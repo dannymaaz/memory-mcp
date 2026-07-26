@@ -28,6 +28,23 @@ def _project() -> dict[str, object]:
     }
 
 
+def _task(task_id: str, project_id: str = "project-1", owner_id: str = "owner-1") -> dict[str, object]:
+    return {
+        "id": task_id,
+        "project_id": project_id,
+        "owner_id": owner_id,
+        "title": f"Task {task_id}",
+        "status": "pending",
+        "priority": "high",
+        "details": "",
+        "sensitivity": "internal",
+        "expires_at": None,
+        "metadata": {},
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+
+
 def test_factory_creates_protocol_compatible_sqlite(tmp_path: Path) -> None:
     storage = create_storage("sqlite", sqlite_path=tmp_path / "memory.db")
     assert isinstance(storage, StorageAdapter)
@@ -72,24 +89,59 @@ def test_scoped_delete_only_removes_matching_owner_project(tmp_path: Path) -> No
     storage = SQLiteStorage(tmp_path / "memory.db")
     storage.initialize()
     storage.insert("projects", _project())
-    task = {
-        "id": "task-1",
-        "project_id": "project-1",
-        "owner_id": "owner-1",
-        "title": "Create SQLite adapter",
-        "status": "pending",
-        "priority": "high",
-        "details": "",
-        "sensitivity": "internal",
-        "expires_at": None,
-        "metadata": {},
-        "created_at": NOW,
-        "updated_at": NOW,
-    }
-    storage.insert("tasks", task)
+    storage.insert("tasks", _task("task-1"))
     deleted = storage.delete("tasks", {"owner_id": "owner-1", "project_id": "project-1"})
     assert deleted == 1
     assert storage.select("tasks", {"project_id": "project-1"}) == []
+
+
+def test_delete_ids_removes_only_exact_scoped_records(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "memory.db")
+    storage.initialize()
+    storage.insert("projects", _project())
+    storage.insert("tasks", _task("task-1"))
+    storage.insert("tasks", _task("task-2"))
+
+    deleted = storage.delete_ids(
+        "tasks",
+        ["task-1", "missing"],
+        owner_id="owner-1",
+        project_id="project-1",
+    )
+
+    assert deleted == 1
+    remaining = storage.select("tasks", {"project_id": "project-1"})
+    assert [row["id"] for row in remaining] == ["task-2"]
+
+
+def test_delete_ids_does_not_cross_project_scope(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "memory.db")
+    storage.initialize()
+    storage.insert("projects", _project())
+    second_project = {**_project(), "id": "project-2", "slug": "memory-mcp-2"}
+    storage.insert("projects", second_project)
+    storage.insert("tasks", _task("task-foreign", project_id="project-2"))
+
+    deleted = storage.delete_ids(
+        "tasks",
+        ["task-foreign"],
+        owner_id="owner-1",
+        project_id="project-1",
+    )
+
+    assert deleted == 0
+    assert storage.select("tasks", {"project_id": "project-2"})[0]["id"] == "task-foreign"
+
+
+def test_delete_ids_empty_plan_is_noop(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "memory.db")
+    storage.initialize()
+    assert storage.delete_ids(
+        "tasks",
+        [],
+        owner_id="owner-1",
+        project_id="project-1",
+    ) == 0
 
 
 def test_unknown_table_is_rejected(tmp_path: Path) -> None:
