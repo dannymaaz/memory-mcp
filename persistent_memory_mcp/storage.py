@@ -34,6 +34,8 @@ class StorageAdapter(Protocol):
 
     def delete(self, table: str, filters: Mapping[str, Any]) -> int: ...
 
+    def delete_ids(self, table: str, record_ids: Iterable[str], *, owner_id: str, project_id: str) -> int: ...
+
     def healthcheck(self) -> tuple[bool, str]: ...
 
 
@@ -209,6 +211,32 @@ class SQLiteStorage:
         where_sql, params = self._where(filters)
         with self.connect() as connection:
             cursor = connection.execute(f'delete from "{table}"{where_sql}', params)
+            connection.commit()
+            return int(cursor.rowcount)
+
+    def delete_ids(
+        self,
+        table: str,
+        record_ids: Iterable[str],
+        *,
+        owner_id: str,
+        project_id: str,
+    ) -> int:
+        """Delete only exact record IDs within an owner/project scope."""
+        table = self._validate_table(table)
+        ids = tuple(dict.fromkeys(str(record_id).strip() for record_id in record_ids if str(record_id).strip()))
+        if not ids:
+            return 0
+        if not owner_id or not project_id:
+            raise ValueError("owner_id and project_id are required")
+        placeholders = ", ".join("?" for _ in ids)
+        params = [owner_id, project_id, *ids]
+        with self.connect() as connection:
+            cursor = connection.execute(
+                f'delete from "{table}" where "owner_id" = ? and "project_id" = ? '
+                f'and "id" in ({placeholders})',
+                params,
+            )
             connection.commit()
             return int(cursor.rowcount)
 
