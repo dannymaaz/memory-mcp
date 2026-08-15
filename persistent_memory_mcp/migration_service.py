@@ -1,64 +1,270 @@
 """Backup-first, checksum-verified SQLite migrations."""
+
 from __future__ import annotations
-import hashlib, sqlite3
+
+import hashlib
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Iterable, Mapping
+
 from .maintenance.backup_service import BackupService
 from .sqlite_migrations import MIGRATIONS
 
-_REQUIRED = {"workspaces","projects","decisions","tasks","sessions","warnings"}
+_REQUIRED_TABLES = frozenset(
+    {"workspaces", "projects", "decisions", "tasks", "sessions", "warnings"}
+)
+_TRANSACTION_CONTROL = frozenset({"begin", "commit", "rollback", "savepoint", "release"})
 
-class MigrationError(RuntimeError): pass
-class MigrationChecksumError(MigrationError): pass
-class MigrationCompatibilityError(MigrationError): pass
-class MigrationExecutionError(MigrationError): pass
+
+class MigrationError(RuntimeError):
+    """Base error for local SQLite migration failures."""
+
+
+class MigrationChecksumError(MigrationError):
+    """Raised when an already-applied migration no longer matches its checksum."""
+
+
+class MigrationCompatibilityError(MigrationError):
+    """Raised when the database or migration set is unsafe to upgrade."""
+
+
+class MigrationExecutionError(MigrationError):
+    """Raised when a migration fails while being applied."""
+
 
 @dataclass(frozen=True)
 class MigrationPlan:
+    """Read-only description of the current and pending local schema state."""
+
     schema_version: int
     pending: tuple[dict[str, object], ...]
     applied: tuple[dict[str, object], ...]
-    def as_dict(self): return {"schema_version":self.schema_version,"pending":list(self.pending),"applied":list(self.applied),"backup_required":bool(self.pending)}
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "pending": list(self.pending),
+            "applied": list(self.applied),
+            "backup_required": bool(self.pending),
+        }
+
+
+@dataclass(frozen=True)
+class _Migration:
+    version: int
+    name: str
+    sql: str
+    checksum: str
+
 
 class MigrationService:
-    def __init__(self, database_path: str | Path, migrations=MIGRATIONS):
-        self.database_path=Path(database_path).expanduser().resolve(); self.migrations=tuple(migrations)
+    """Plan and apply ordered SQLite migrations after creating a verified backup."""
+
+    def __init__(
+        self,
+        database_path: str | Path,
+        migrations: Iterable[Mapping[str, object]] = MIGRATIONS,
+    ) -> None:
+        self.database_path = Path(database_path).expanduser().resolve()
+        self.migrations = self._normalize_migrations(migrations)
+
     @staticmethod
-    def _checksum(sql: str)->str: return hashlib.sha256(sql.encode()).hexdigest()
-    def _validate(self):
-        if not self.database_path.is_file(): raise MigrationCompatibilityError("SQLite database does not exist")
-        with sqlite3.connect(f"file:{self.database_path.as_posix()}?mode=ro",uri=True) as c:
-            if str(c.execute("pragma quick_check").fetchone()[0])!="ok": raise MigrationCompatibilityError("SQLite quick_check failed")
-            tables={str(r[0]) for r in c.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")}
-        missing=sorted(_REQUIRED-tables)
-        if missing: raise MigrationCompatibilityError("missing required v0.2 tables: "+", ".join(missing))
-    def plan(self)->MigrationPlan:
-        self._validate()
-        with sqlite3.connect(f"file:{self.database_path.as_posix()}?mode=ro",uri=True) as c:
-            version=int(c.execute("pragma user_version").fetchone()[0]); exists=c.execute("select 1 from sqlite_master where type='table' and name='schema_migrations'").fetchone()
-            rows=c.execute("select version,name,checksum,applied_at from schema_migrations order by version").fetchall() if exists else []
-        applied={int(r[0]):r for r in rows}; pending=[]
-        for m in self.migrations:
-            v=int(m["version"]); ch=self._checksum(str(m["sql"])); name=str(m["name"])
-            if v in applied:
-                if str(applied[v][2])!=ch: raise MigrationChecksumError(f"applied migration {v:04d}_{name} checksum changed")
-            else: pending.append({"version":v,"name":name,"checksum":ch})
-        return MigrationPlan(version,tuple(pending),tuple({"version":int(r[0]),"name":str(r[1]),"checksum":str(r[2]),"applied_at":str(r[3])} for r in rows))
-    def apply(self, backup_directory: str | Path)->dict[str,object]:
-        plan=self.plan()
-        if not plan.pending: return {"status":"current","plan":plan.as_dict(),"applied":[],"backup":None}
-        stamp=datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ"); backup=BackupService(self.database_path).create_backup(Path(backup_directory)/f"pre-migration-{stamp}.db")
-        with sqlite3.connect(self.database_path) as c:
-            c.execute("create table if not exists schema_migrations (version integer primary key,name text not null,checksum text not null,applied_at text not null)"); c.commit()
-        by_version={int(m["version"]):m for m in self.migrations}; done=[]
-        for item in plan.pending:
-            m=by_version[int(item["version"])]; c=sqlite3.connect(self.database_path)
+    def _checksum(sql: str) -> str:
+        return hashlib.sha256(sql.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _normalize_migrations(
+        cls,
+        migrations: Iterable[Mapping[str, object]],
+    ) -> tuple[_Migration, ...]:
+        normalized: list[_Migration] = []
+        versions: set[int] = set()
+        for raw in migrations:
             try:
-                c.executescript("BEGIN IMMEDIATE;\n"+str(m["sql"]))
-                c.execute("insert into schema_migrations values (?,?,?,?)",(int(m["version"]),str(m["name"]),self._checksum(str(m["sql"])),datetime.now(UTC).isoformat())); c.commit()
-                done.append(item)
+                version = int(raw["version"])
+                name = str(raw["name"]).strip()
+                sql = str(raw["sql"]).strip()
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MigrationCompatibilityError("migration metadata is invalid") from exc
+            if version < 1:
+                raise MigrationCompatibilityError("migration versions must be positive integers")
+            if version in versions:
+                raise MigrationCompatibilityError(f"duplicate migration version: {version}")
+            if not name or not sql:
+                raise MigrationCompatibilityError("migration name and SQL must not be empty")
+            cls._reject_transaction_control(sql, version, name)
+            versions.add(version)
+            normalized.append(_Migration(version, name, sql, cls._checksum(sql)))
+        normalized.sort(key=lambda migration: migration.version)
+        if not normalized:
+            raise MigrationCompatibilityError("at least one SQLite migration is required")
+        return tuple(normalized)
+
+    @staticmethod
+    def _reject_transaction_control(sql: str, version: int, name: str) -> None:
+        tokens = sql.lower().replace(";", " ").split()
+        if _TRANSACTION_CONTROL.intersection(tokens):
+            raise MigrationCompatibilityError(
+                f"migration {version:04d}_{name} must not manage transactions explicitly"
+            )
+
+    def _validate_database(self) -> None:
+        if not self.database_path.is_file():
+            raise MigrationCompatibilityError("SQLite database does not exist")
+        try:
+            uri = f"file:{self.database_path.as_posix()}?mode=ro"
+            with sqlite3.connect(uri, uri=True) as connection:
+                quick_check = connection.execute("pragma quick_check").fetchone()
+                if quick_check is None or str(quick_check[0]) != "ok":
+                    raise MigrationCompatibilityError("SQLite quick_check failed")
+                tables = {
+                    str(row[0])
+                    for row in connection.execute(
+                        "select name from sqlite_master "
+                        "where type='table' and name not like 'sqlite_%'"
+                    )
+                }
+        except sqlite3.Error as exc:
+            raise MigrationCompatibilityError("SQLite database could not be inspected") from exc
+
+        missing = sorted(_REQUIRED_TABLES - tables)
+        if missing:
+            raise MigrationCompatibilityError(
+                "missing required v0.2 tables: " + ", ".join(missing)
+            )
+
+    def plan(self) -> MigrationPlan:
+        """Inspect migration state without mutating the database."""
+        self._validate_database()
+        uri = f"file:{self.database_path.as_posix()}?mode=ro"
+        try:
+            with sqlite3.connect(uri, uri=True) as connection:
+                schema_version = int(connection.execute("pragma user_version").fetchone()[0])
+                tracking_exists = connection.execute(
+                    "select 1 from sqlite_master "
+                    "where type='table' and name='schema_migrations'"
+                ).fetchone()
+                applied_rows = (
+                    connection.execute(
+                        "select version, name, checksum, applied_at "
+                        "from schema_migrations order by version"
+                    ).fetchall()
+                    if tracking_exists
+                    else []
+                )
+        except sqlite3.Error as exc:
+            raise MigrationCompatibilityError("migration history could not be inspected") from exc
+
+        latest_supported = self.migrations[-1].version
+        if schema_version > latest_supported:
+            raise MigrationCompatibilityError(
+                f"database schema version {schema_version} is newer than supported "
+                f"version {latest_supported}"
+            )
+
+        applied_by_version = {int(row[0]): row for row in applied_rows}
+        if applied_by_version and max(applied_by_version) > schema_version:
+            raise MigrationCompatibilityError(
+                "migration history is ahead of SQLite user_version"
+            )
+
+        pending: list[dict[str, object]] = []
+        for migration in self.migrations:
+            applied = applied_by_version.get(migration.version)
+            if applied is not None:
+                if str(applied[1]) != migration.name:
+                    raise MigrationCompatibilityError(
+                        f"applied migration {migration.version:04d} name changed"
+                    )
+                if str(applied[2]) != migration.checksum:
+                    raise MigrationChecksumError(
+                        f"applied migration {migration.version:04d}_{migration.name} "
+                        "checksum changed"
+                    )
+                continue
+            if migration.version <= schema_version:
+                raise MigrationCompatibilityError(
+                    f"schema version {schema_version} indicates migration "
+                    f"{migration.version:04d}_{migration.name} is applied, but history is missing"
+                )
+            pending.append(
+                {
+                    "version": migration.version,
+                    "name": migration.name,
+                    "checksum": migration.checksum,
+                }
+            )
+
+        applied = tuple(
+            {
+                "version": int(row[0]),
+                "name": str(row[1]),
+                "checksum": str(row[2]),
+                "applied_at": str(row[3]),
+            }
+            for row in applied_rows
+        )
+        return MigrationPlan(schema_version, tuple(pending), applied)
+
+    def apply(self, backup_directory: str | Path) -> dict[str, object]:
+        """Apply all pending migrations after a verified pre-migration backup."""
+        plan = self.plan()
+        if not plan.pending:
+            return {
+                "status": "current",
+                "plan": plan.as_dict(),
+                "applied": [],
+                "backup": None,
+            }
+
+        backup_directory = Path(backup_directory).expanduser().resolve()
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        backup = BackupService(self.database_path).create_backup(
+            backup_directory / f"pre-migration-{stamp}.db"
+        )
+
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                "create table if not exists schema_migrations ("
+                "version integer primary key, "
+                "name text not null, "
+                "checksum text not null, "
+                "applied_at text not null)"
+            )
+            connection.commit()
+
+        by_version = {migration.version: migration for migration in self.migrations}
+        applied_now: list[dict[str, object]] = []
+        for item in plan.pending:
+            migration = by_version[int(item["version"])]
+            connection = sqlite3.connect(self.database_path)
+            try:
+                connection.executescript("BEGIN IMMEDIATE;\n" + migration.sql + "\n")
+                connection.execute(
+                    "insert into schema_migrations "
+                    "(version, name, checksum, applied_at) values (?, ?, ?, ?)",
+                    (
+                        migration.version,
+                        migration.name,
+                        migration.checksum,
+                        datetime.now(UTC).isoformat(),
+                    ),
+                )
+                connection.commit()
+                applied_now.append(item)
             except sqlite3.Error as exc:
-                c.rollback(); raise MigrationExecutionError(f"migration {int(m['version']):04d}_{m['name']} failed") from exc
-            finally: c.close()
-        return {"status":"ok","applied":done,"backup":backup.as_dict(),"plan":self.plan().as_dict()}
+                connection.rollback()
+                raise MigrationExecutionError(
+                    f"migration {migration.version:04d}_{migration.name} failed"
+                ) from exc
+            finally:
+                connection.close()
+
+        return {
+            "status": "ok",
+            "applied": applied_now,
+            "backup": backup.as_dict(),
+            "plan": self.plan().as_dict(),
+        }
