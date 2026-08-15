@@ -43,10 +43,15 @@ def install_deployment_storage() -> None:
     original_initialize = SQLiteStorage.initialize
     original_decode_row = SQLiteStorage._decode_row
 
-    def initialize(self: Any) -> None:
-        original_initialize(self)
-        with self.connect() as connection:
+    def initialize(self: Any, *args: Any, **kwargs: Any) -> None:
+        """Preserve the concrete storage initializer contract while extending schema."""
+        original_initialize(self, *args, **kwargs)
+        connection = self.connect()
+        try:
             connection.executescript(_DEPLOYMENT_SQL)
+            connection.commit()
+        finally:
+            connection.close()
 
     def decode_row(row: Any) -> dict[str, Any]:
         result = original_decode_row(row)
