@@ -12,7 +12,7 @@
 </p>
 
 ![License](https://img.shields.io/badge/license-MIT-black)
-![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-compatible-6C5CE7)
 ![Storage](https://img.shields.io/badge/storage-local%20SQLite-003B57?logo=sqlite&logoColor=white)
 
@@ -36,6 +36,8 @@ The intended product is personal and local-first: one local installation, one pr
 | File-level memory | Understand important modules and dependencies |
 | Semantic and lexical search | Find relevant context instead of loading everything |
 | Confirmed deletion | Preview exact records and require a signed confirmation before deletion |
+| Verified local backup | Create WAL-safe SQLite backups with integrity validation |
+| SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
 | Private local dashboard | Inspect project memory without exposing it remotely |
 
 ## Quick start
@@ -64,7 +66,14 @@ memory-mcp init
 
 The setup command creates a private configuration, initializes the local SQLite database and generates an MCP configuration block for supported clients. The default local database is `~/.memory-mcp/memory.db`.
 
-Supabase and PostgreSQL adapters remain available for advanced self-managed storage, but the product direction and dashboard are local and personal.
+Supabase and PostgreSQL remain available for advanced self-managed storage, but their drivers are optional extras rather than core dependencies:
+
+```bash
+pip install "persistent-memory-mcp[supabase]"
+pip install "persistent-memory-mcp[postgresql]"
+```
+
+The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13.
 
 ### 3. Diagnose the installation
 
@@ -72,6 +81,8 @@ Supabase and PostgreSQL adapters remain available for advanced self-managed stor
 memory-mcp doctor
 memory-mcp status
 ```
+
+A richer `memory-mcp health` integrity report is tracked for v0.3.0 before restore and migration workflows are enabled.
 
 ### 4. Add it to your MCP client
 
@@ -81,7 +92,7 @@ memory-mcp status
     "persistent-memory-mcp": {
       "command": "memory-mcp",
       "env": {
-        "MEMORY_STORAGE_BACKEND": "sqlite",
+        "MEMORY_BACKEND": "sqlite",
         "OWNER_ID": "your-stable-local-identifier",
         "MEMORY_CONFIRMATION_SECRET": "your-private-confirmation-secret"
       }
@@ -134,7 +145,7 @@ The server detects repository context, resolves or creates the current project, 
 | `plan_memory_deletion` | Preview exact deletion candidates and issue a short-lived signed token |
 | `execute_memory_deletion` | Execute only the unchanged, scoped and confirmed plan |
 
-Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships.
+Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Verified backup services currently live in the maintenance API while the v0.3 CLI/dashboard maintenance UX is completed.
 
 ## Confirmed deletion safety model
 
@@ -145,6 +156,14 @@ Deletion is a two-phase local operation:
 
 Retention cleanup uses the same preview-and-confirm contract. No retention deletion runs automatically at startup. Audit events record operation metadata and counts without copying deleted content.
 
+## Verified backup safety model
+
+PR #29 introduced consistent SQLite backup creation with `sqlite3.Connection.backup()` rather than direct filesystem copies. It supports active WAL mode, refuses accidental overwrite, validates the completed database with `PRAGMA integrity_check` and cleans incomplete temporary output after failures.
+
+PR #35 adds a versioned JSON manifest to every successful backup with a SHA-256 digest, package/SQLite/schema versions, size, integrity result and bounded table counts. Manifest verification rejects changed or malformed backups without placing stored memory values or source database paths in the manifest.
+
+Restore remains intentionally unavailable until the v0.3 two-phase restore workflow can validate the selected backup, preview the exact operation, create a fresh safety backup and require explicit confirmation.
+
 ## Privacy and security
 
 - The dashboard binds only to localhost and rejects remote interfaces.
@@ -152,8 +171,9 @@ Retention cleanup uses the same preview-and-confirm contract. No retention delet
 - Every memory operation is scoped by owner and project.
 - Sensitive values are redacted before persistence.
 - Destructive operations require a short-lived confirmation tied to an exact plan.
+- Backup manifests contain structural verification metadata, not memory values.
 - Keep local configuration and confirmation secrets private.
-- Create verified backups before upgrades, migrations or destructive maintenance.
+- Create a verified backup before upgrades, migrations or destructive maintenance.
 
 ## Product scope
 
@@ -172,10 +192,17 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] Automatic nested secret redaction
 - [x] Provider-based embedding generation and reindexing
 - [x] Selective deletion and confirmed retention execution
-- [ ] Verified local backup and restore workflow
+- [x] WAL-safe SQLite backup with integrity validation
+- [x] Versioned SHA-256 backup manifests and tamper detection
+- [x] SQLite-first core packaging with optional remote database extras
+- [x] Ubuntu, Windows and macOS CI across Python 3.11–3.13
+- [ ] `memory-mcp health` and integrity diagnostics
+- [ ] Confirmed two-phase SQLite restore
+- [ ] Versioned SQLite migrations and 0.2.0 upgrade validation
 - [ ] Dashboard pagination and operational summary cards
 - [ ] Complete automatic continuation checkpoints
-- [ ] Package publication, upgrades and MCP Registry release
+- [ ] Wheel/sdist clean-install validation and release publication
+- [ ] MCP Registry release
 
 ## Documentation
 

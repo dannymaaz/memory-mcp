@@ -1,20 +1,25 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled after merged PR #26 and the decision to keep the product local, personal and localhost-only.
+Last reconciled after merged PR #35 and PR #30. Persistent Memory MCP remains a local-first, personal and localhost-only product.
 
 ## Executive summary
 
-Persistent Memory MCP now provides a strong local-first technical foundation for durable project memory: private SQLite storage, safe client installation, token-efficient context construction, owner/project isolation, hybrid search, persisted embeddings, session lifecycle management, Git-grounded verification, code intelligence, duplicate and contradiction analysis, deployment safety, evaluation tooling, a localhost-only dashboard, Galaxy visualization and confirmed destructive operations.
+Persistent Memory MCP provides a strong local-first technical foundation for durable project memory: private SQLite storage, safe client installation, token-efficient context construction, owner/project isolation, hybrid search, persisted embeddings, session lifecycle management, Git-grounded verification, code intelligence, duplicate and contradiction analysis, deployment safety, evaluation tooling, a localhost-only dashboard, Galaxy visualization and confirmed destructive operations.
 
-The product is personal and local. It is not intended to become a collaborative SaaS, shared workspace service or multi-user dashboard. The next priority is verified backup and restore so local data can be recovered before dashboard and release work expands.
+The first v0.3.0 data-safety and packaging milestones are now implemented. PR #29 added consistent WAL-safe SQLite backups with integrity validation, PR #35 added versioned SHA-256 manifests and independent tamper verification, and PR #30 aligned runtime/package defaults with the local-first product while validating the core suite across Ubuntu, Windows and macOS on Python 3.11–3.13. The remaining release blockers are health/integrity diagnostics, confirmed restore, versioned local migrations, wheel/sdist clean-install validation and the still-partial continuation/dashboard work.
 
 ## Capability matrix
 
 | Capability | Status | Evidence | Remaining gap |
 |---|---|---|---|
-| Product CLI and client onboarding | Complete | PR #1, PR #4 | Release publication and broader upgrade validation |
+| Product CLI and client onboarding | Complete foundation | PR #1, PR #4 | Release publication and broader upgrade validation |
 | Security and isolation | Complete foundation | PR #2, PR #11, PR #20 | Continue adversarial coverage |
-| SQLite local-first storage | Complete | PR #3 | Verified backup, restore and migration validation |
+| SQLite local-first storage | Complete | PR #3 | Versioned migrations and recovery validation |
+| Verified SQLite backup | Complete foundation | PR #29 | User-facing maintenance integration and recovery workflows |
+| SHA-256 backup manifests | Complete | PR #35 | May later add stronger signing/rotation policies if needed |
+| Database health and integrity | Planned | Issue #32 | Full implementation |
+| Confirmed two-phase restore | Planned | Issue #33 | Full implementation |
+| Versioned SQLite migrations | Planned | Issue #34 | Full implementation and 0.2.0 upgrade validation |
 | Token-efficient context | Complete | PR #5 | Continue quality benchmarking |
 | Hybrid search and embeddings | Complete foundation | PR #6, PR #12 | Background indexing and broader benchmarks |
 | Automatic sessions | Partial | PR #7 | Automatic project resolution and complete continuation checkpoints |
@@ -27,9 +32,54 @@ The product is personal and local. It is not intended to become a collaborative 
 | Galaxy knowledge view | Complete foundation | PR #17, PR #18 | Performance and usability refinement |
 | Nested secret redaction | Complete | PR #20 | Continue adversarial coverage |
 | Confirmed deletion and retention execution | Complete | PR #26 | Dashboard controls may consume the workflow later |
-| Verified backup and restore | Planned | Next milestone | Full implementation and recovery validation |
+| SQLite-first packaging and cross-platform CI | Complete foundation | PR #30 | Wheel/sdist clean-install and released-upgrade validation |
+| Centralized Settings/deprecation cleanup | Partial | PR #30 foundation | Extract one Settings object and formally deprecate the legacy backend alias |
 | Teams and remote collaborative dashboard | Out of scope | PR #23 closed; issue #22 not planned | No implementation planned |
-| Distribution and MCP Registry | Planned | Future work | Release automation and publication |
+| Distribution and MCP Registry | Planned | Future release work | Release automation and publication |
+
+## Verified backup contract
+
+PR #29 added a dedicated maintenance package and `BackupService` contract.
+
+A successful backup:
+
+- uses SQLite's backup API instead of copying the active file;
+- remains consistent while WAL mode is active;
+- refuses same-path destinations and pre-existing targets;
+- writes through a temporary file and removes incomplete output on failure;
+- validates the completed database with `PRAGMA integrity_check`;
+- returns sizes, SQLite/schema versions and bounded table counts without exposing stored memory values.
+
+Quality workflow #149 passed compilation, Ruff, Pytest, evaluation regressions and dependency audit across Python 3.11, 3.12 and 3.13.
+
+## Backup manifest contract
+
+PR #35 added a versioned JSON sidecar for successful backups.
+
+The manifest records:
+
+- manifest format and package version;
+- UTC creation time;
+- backup filename and size;
+- SHA-256 digest;
+- SQLite and schema versions;
+- integrity result;
+- bounded table counts.
+
+It intentionally excludes stored memory values and the source database path. Verification rejects malformed manifests, unsupported versions, filename/size mismatch and SHA-256 mismatch. Quality workflow #152 passed across Python 3.11, 3.12 and 3.13.
+
+## SQLite-first packaging contract
+
+PR #30 aligned installation and runtime behavior without forcing a breaking rewrite of legacy adapter helpers:
+
+- new/default runtime configuration falls back to SQLite when no backend variable is present;
+- `MEMORY_BACKEND` is the canonical variable for new configuration;
+- the historical `MEMORY_STORAGE_BACKEND` alias is still accepted temporarily by the runtime migration path;
+- Supabase and PostgreSQL drivers moved to optional package extras instead of every SQLite installation;
+- the core package, lint, tests and evaluation regressions run on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13;
+- dependency audit also installs and checks the optional remote extras.
+
+The generic legacy `normalize_backend(None)` contract is intentionally preserved until the planned centralized Settings migration, avoiding an unrelated breaking change inside the packaging PR.
 
 ## Confirmed deletion contract
 
@@ -39,12 +89,6 @@ PR #26 added two MCP tools:
 - `execute_memory_deletion` validates the unchanged plan, active owner/project scope, expiry and single-use confirmation before deleting exact IDs.
 
 The same contract supports retention candidates. Retention deletion never runs automatically at startup. Current records are revalidated immediately before mutation, unrelated projects are preserved, and audit events store operation metadata and counts without copying deleted content.
-
-Validation completed in Quality workflow #145:
-
-- Python 3.11, 3.12 and 3.13 compile, lint, tests and evaluation regressions passed.
-- Dependency audit passed.
-- Issue #24 closed automatically when PR #26 merged.
 
 ## Product scope
 
@@ -59,11 +103,11 @@ Persistent Memory MCP is designed around:
 - no public remote collaborative dashboard;
 - no billing or organization-management surface.
 
-Supabase and PostgreSQL adapters may remain available for advanced self-managed persistence, but they do not change the local product direction.
+Supabase and PostgreSQL adapters remain available as optional advanced self-managed persistence modes, but they do not change the local product direction.
 
 ## Definition of done for the technical core
 
-The core is considered substantially complete when:
+The technical core is substantially complete when:
 
 - every memory write is sanitized and scoped;
 - reads and writes enforce owner/project boundaries;
@@ -73,23 +117,33 @@ The core is considered substantially complete when:
 - symbol indexes persist across revisions;
 - adversarial isolation, poisoned-memory and handoff tests pass.
 
-Confirmed deletion is complete. Automatic continuation and persistent symbol evolution remain partial.
+Confirmed deletion, verified backup, manifest verification and local-first package defaults are complete foundations. Automatic continuation, persistent symbol evolution and centralized Settings remain partial.
 
-## Definition of done for the complete product
+## Definition of done for v0.3.0
 
-The complete local product additionally requires:
+The Data Safety and Recovery release additionally requires:
 
-- verified local backup, restore, migration and disaster recovery;
-- a polished localhost-only dashboard with operational health views;
-- complete automatic continuation checkpoints;
-- release automation, package publication and MCP Registry submission;
-- clean install, upgrade and uninstall validation.
+- `memory-mcp health` and SQLite integrity diagnostics;
+- two-phase verified restore with pre-restore backup;
+- versioned and checksum-validated SQLite migrations;
+- wheel/sdist build and clean-install validation;
+- upgrade validation from 0.2.0;
+- synchronized README, ROADMAP, implementation status and Notion records;
+- release notes, rollback instructions, GitHub Release and PyPI validation.
+
+Already completed for v0.3.0:
+
+- SQLite-first package configuration with optional remote dependencies;
+- Ubuntu, Windows and macOS critical-path CI on Python 3.11–3.13;
+- verified SQLite backup and SHA-256 manifest foundations.
 
 ## Recommended implementation order
 
-1. Add verified SQLite backup and restore.
-2. Add database integrity checks and recovery workflows.
-3. Complete dashboard pagination, health cards and safe maintenance actions.
-4. Complete automatic project resolution and continuation checkpoints.
-5. Persist and enrich the symbol graph across revisions.
-6. Add release automation, upgrade validation and registry publication.
+1. Implement health and integrity diagnostics — issue #32.
+2. Implement two-phase verified restore — issue #33.
+3. Implement versioned SQLite migrations — issue #34.
+4. Build/test wheel and sdist artifacts and validate a clean install/upgrade from 0.2.0.
+5. Complete dashboard pagination, health cards and safe maintenance actions.
+6. Complete automatic project resolution and continuation checkpoints.
+7. Persist and enrich the symbol graph across revisions.
+8. Finish centralized Settings/deprecation cleanup, release notes and publish v0.3.0.
