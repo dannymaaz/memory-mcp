@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -24,23 +25,32 @@ def restore_confirmation_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _database(path: Path, value: str, *, schema_version: int = 7) -> None:
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         connection.execute("pragma journal_mode = wal")
         connection.execute(f"pragma user_version = {schema_version}")
         connection.execute("create table state (id integer primary key, value text not null)")
         connection.execute("insert into state (id, value) values (1, ?)", (value,))
         connection.commit()
+    finally:
+        connection.close()
 
 
 def _read_value(path: Path) -> str:
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         return str(connection.execute("select value from state where id = 1").fetchone()[0])
+    finally:
+        connection.close()
 
 
 def _set_value(path: Path, value: str) -> None:
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         connection.execute("update state set value = ? where id = 1", (value,))
         connection.commit()
+    finally:
+        connection.close()
 
 
 def _prepared_restore(tmp_path: Path) -> tuple[Path, Path, RestoreService]:
@@ -109,6 +119,20 @@ def test_active_database_change_after_preview_is_rejected(tmp_path: Path) -> Non
 
     assert _read_value(target) == "changed-after-preview"
     assert not Path(plan.safety_backup_path).exists()
+
+
+def test_filesystem_metadata_change_without_logical_drift_is_allowed(tmp_path: Path) -> None:
+    target, backup, service = _prepared_restore(tmp_path)
+    plan, token = service.plan_restore(backup)
+    stat = target.stat()
+    changed_mtime = stat.st_mtime_ns + 2_000_000_000
+    os.utime(target, ns=(stat.st_atime_ns, changed_mtime))
+
+    assert target.stat().st_mtime_ns != plan.target_mtime_ns
+    result = service.execute_restore(plan, token)
+
+    assert result["status"] == "ok"
+    assert _read_value(target) == "original-backup-state"
 
 
 def test_schema_mismatch_is_rejected_during_preview(tmp_path: Path) -> None:
