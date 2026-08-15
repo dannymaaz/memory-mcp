@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from persistent_memory_mcp.tokenization import measure_tokens, resolve_token_counter
+
 
 class ModelRouter:
     """Selecciona modelos y ajusta contexto de acuerdo con la carga de trabajo."""
@@ -32,14 +34,7 @@ class ModelRouter:
     }
 
     def recommend_model(self, task_type: str) -> str:
-        """Recomienda un modelo segun la naturaleza de la tarea.
-
-        Args:
-            task_type: Categoria funcional de la tarea.
-
-        Returns:
-            Nombre del modelo recomendado.
-        """
+        """Recomienda un modelo segun la naturaleza de la tarea."""
         normalized_task = task_type.strip().lower()
         for model_name, settings in self.MODEL_STRENGTHS.items():
             if normalized_task in settings["tasks"]:
@@ -47,19 +42,45 @@ class ModelRouter:
         return "gemini-pro"
 
     def get_context_limit(self, model_name: str) -> int:
-        """Obtiene el limite de tokens de contexto de un modelo.
-
-        Args:
-            model_name: Nombre del modelo a consultar.
-
-        Returns:
-            Numero maximo de tokens estimados.
-        """
+        """Obtiene el limite de tokens de contexto de un modelo."""
         return int(
             self.MODEL_STRENGTHS.get(model_name, self.MODEL_STRENGTHS["gemini-pro"])[
                 "context_limit"
             ]
         )
+
+    def _refresh_context_packet(self, payload: dict[str, Any]) -> None:
+        """Make Context Packet accounting authoritative after delivery annotations."""
+        packet = payload.get("context_packet")
+        if not isinstance(packet, dict):
+            return
+        tokens = packet.get("tokens")
+        if not isinstance(tokens, dict):
+            return
+        tokenizer_name = str(tokens.get("tokenizer") or "deterministic")
+        model = tokens.get("model")
+        if tokenizer_name.startswith("tiktoken:") and model:
+            counter = resolve_token_counter(model=str(model), tokenizer="tiktoken")
+        else:
+            counter = resolve_token_counter(
+                model=str(model) if model else None,
+                tokenizer=tokenizer_name,
+            )
+        previous: tuple[int, int] | None = None
+        for _ in range(8):
+            measurement = measure_tokens(payload, counter)
+            signature = (measurement.count, measurement.estimated_count)
+            tokens.update(measurement.as_dict())
+            if signature == previous:
+                break
+            previous = signature
+        final = measure_tokens(payload, counter)
+        tokens.update(final.as_dict())
+        budget = int(tokens.get("budget") or 0)
+        if budget and final.count > budget:
+            raise ValueError(
+                f"final routed Context Packet exceeds token budget: {final.count} > {budget}"
+            )
 
     def optimize_context_for_model(
         self,
@@ -67,16 +88,7 @@ class ModelRouter:
         context: dict[str, Any],
         estimated_tokens: int,
     ) -> dict[str, Any]:
-        """Marca estrategia de compresion y prioridad por modelo.
-
-        Args:
-            model_name: Modelo objetivo.
-            context: Contexto previamente agregado.
-            estimated_tokens: Tokens calculados para el payload actual.
-
-        Returns:
-            Contexto anotado con estrategia de entrega.
-        """
+        """Marca estrategia de compresion y prioridad por modelo."""
         limit = self.get_context_limit(model_name)
         ratio = 0 if limit == 0 else min(1.0, estimated_tokens / limit)
         optimized = dict(context)
@@ -87,4 +99,5 @@ class ModelRouter:
             "limit": limit,
             "compression_level": "high" if ratio > 0.8 else "low",
         }
+        self._refresh_context_packet(optimized)
         return optimized
