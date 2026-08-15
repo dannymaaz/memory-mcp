@@ -1,6 +1,6 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap reflects merged work through PR #35 and PR #30. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
+This roadmap reflects merged work through PR #39. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
 
 ## Status legend
 
@@ -14,7 +14,7 @@ This roadmap reflects merged work through PR #35 and PR #30. Persistent Memory M
 ### Product CLI and local onboarding — ✅ Complete foundation
 
 - `memory-mcp` and `persistent-memory-mcp` command aliases.
-- `init`, `doctor`, `status` and `serve` commands.
+- `init`, `doctor`, `status`, `health` and `serve` commands.
 - Safe client configuration with backup, rollback and uninstall support.
 - Ubuntu, Windows and macOS CI across Python 3.11–3.13.
 
@@ -40,7 +40,7 @@ Remaining release work:
 - Rejection of altered, expired, cross-scope or reused plans.
 - Exact ID deletion, pre-mutation revalidation and audit metadata without deleted content.
 
-### Verified SQLite backup — ✅ Complete foundation
+### Verified SQLite backup and health — ✅ Complete foundation
 
 PR #29 established recoverable local backup creation:
 
@@ -59,6 +59,16 @@ PR #35 added independent backup verification:
 - bounded table counts and integrity result;
 - tamper, malformed-manifest and incompatible-version detection;
 - no memory values or source database paths in manifests.
+
+PR #39 added read-only SQLite health and maintenance-readiness diagnostics:
+
+- bounded `PRAGMA quick_check` on every report;
+- optional full `PRAGMA integrity_check`;
+- foreign-key violation detection;
+- expected-index validation;
+- DB/WAL/SHM sizes and free disk space;
+- latest verified SHA-256 backup awareness;
+- safe JSON output without memory values or the absolute active database path.
 
 ### Context, search and embeddings — ✅ Complete foundation
 
@@ -148,16 +158,16 @@ Workspace invitations, team roles, shared memory, public remote dashboards, bill
 - [x] Integrity validation and bounded metadata — PR #29.
 - [x] Versioned SHA-256 manifest and tamper verification — PR #35 / issue #31.
 
-### 2. Database health and integrity — ⬜ Planned
+### 2. Database health and integrity — ✅ Complete foundation
 
-Tracked by issue #32.
+PR #39 / issue #32 delivered:
 
-- Add `memory-mcp health`.
-- Run `quick_check` and optional full `integrity_check`.
-- Validate foreign keys and expected indexes.
-- Report database/WAL size, schema version and available disk space.
-- Surface the latest verified backup without exposing memory contents.
-- Detect bounded orphan/reference inconsistencies.
+- [x] `memory-mcp health`.
+- [x] Bounded `quick_check` and optional full `integrity_check`.
+- [x] Foreign-key and expected-index validation.
+- [x] Database/WAL/SHM size, schema version and available disk space.
+- [x] Latest verified backup discovery without memory contents.
+- [x] `maintenance_ready` status requiring both healthy structure and a verified backup.
 
 ### 3. Two-phase verified restore — ⬜ Planned
 
@@ -192,9 +202,9 @@ PR #30 aligned installation and runtime behavior with the local-first product di
 
 Remaining architectural cleanup:
 
-- centralize configuration in one Settings object;
-- add a formal deprecation path for the legacy backend alias;
-- validate built wheel/sdist artifacts in clean environments before release.
+- centralize configuration in one Settings object — issue #37;
+- add a formal deprecation path for the legacy backend alias — issue #37;
+- validate built wheel/sdist artifacts in clean environments — issue #38.
 
 ### 6. Dashboard completion — ⬜ Planned
 
@@ -210,7 +220,7 @@ Remaining architectural cleanup:
 
 ### 8. Distribution and publication — ⬜ Planned
 
-- Build and validate wheel and sdist artifacts.
+- Build and validate wheel and sdist artifacts — issue #38.
 - Install the wheel in a clean environment.
 - Validate upgrade and uninstall workflows.
 - Publish GitHub Release and PyPI artifacts with checksums.
@@ -226,9 +236,9 @@ Remaining architectural cleanup:
 - [x] Selective deletion and confirmed retention execution.
 - [x] WAL-safe verified local backup.
 - [x] Versioned SHA-256 backup manifests and tamper detection.
+- [x] Health and integrity diagnostics.
 - [x] SQLite-first core packaging with optional remote extras.
 - [x] Core CI on Ubuntu, Windows and macOS across Python 3.11–3.13.
-- [ ] Health and integrity diagnostics.
 - [ ] Confirmed two-phase restore and disaster recovery.
 - [ ] Versioned SQLite migrations.
 - [ ] Complete automatic continuation.
