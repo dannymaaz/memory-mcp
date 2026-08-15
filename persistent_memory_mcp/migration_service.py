@@ -113,21 +113,25 @@ class MigrationService:
     def _validate_database(self) -> None:
         if not self.database_path.is_file():
             raise MigrationCompatibilityError("SQLite database does not exist")
+        connection: sqlite3.Connection | None = None
         try:
             uri = f"file:{self.database_path.as_posix()}?mode=ro"
-            with sqlite3.connect(uri, uri=True) as connection:
-                quick_check = connection.execute("pragma quick_check").fetchone()
-                if quick_check is None or str(quick_check[0]) != "ok":
-                    raise MigrationCompatibilityError("SQLite quick_check failed")
-                tables = {
-                    str(row[0])
-                    for row in connection.execute(
-                        "select name from sqlite_master "
-                        "where type='table' and name not like 'sqlite_%'"
-                    )
-                }
+            connection = sqlite3.connect(uri, uri=True)
+            quick_check = connection.execute("pragma quick_check").fetchone()
+            if quick_check is None or str(quick_check[0]) != "ok":
+                raise MigrationCompatibilityError("SQLite quick_check failed")
+            tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "select name from sqlite_master "
+                    "where type='table' and name not like 'sqlite_%'"
+                )
+            }
         except sqlite3.Error as exc:
             raise MigrationCompatibilityError("SQLite database could not be inspected") from exc
+        finally:
+            if connection is not None:
+                connection.close()
 
         missing = sorted(_REQUIRED_TABLES - tables)
         if missing:
@@ -138,24 +142,28 @@ class MigrationService:
     def plan(self) -> MigrationPlan:
         """Inspect migration state without mutating the database."""
         self._validate_database()
-        uri = f"file:{self.database_path.as_posix()}?mode=ro"
+        connection: sqlite3.Connection | None = None
         try:
-            with sqlite3.connect(uri, uri=True) as connection:
-                schema_version = int(connection.execute("pragma user_version").fetchone()[0])
-                tracking_exists = connection.execute(
-                    "select 1 from sqlite_master "
-                    "where type='table' and name='schema_migrations'"
-                ).fetchone()
-                applied_rows = (
-                    connection.execute(
-                        "select version, name, checksum, applied_at "
-                        "from schema_migrations order by version"
-                    ).fetchall()
-                    if tracking_exists
-                    else []
-                )
+            uri = f"file:{self.database_path.as_posix()}?mode=ro"
+            connection = sqlite3.connect(uri, uri=True)
+            schema_version = int(connection.execute("pragma user_version").fetchone()[0])
+            tracking_exists = connection.execute(
+                "select 1 from sqlite_master "
+                "where type='table' and name='schema_migrations'"
+            ).fetchone()
+            applied_rows = (
+                connection.execute(
+                    "select version, name, checksum, applied_at "
+                    "from schema_migrations order by version"
+                ).fetchall()
+                if tracking_exists
+                else []
+            )
         except sqlite3.Error as exc:
             raise MigrationCompatibilityError("migration history could not be inspected") from exc
+        finally:
+            if connection is not None:
+                connection.close()
 
         latest_supported = self.migrations[-1].version
         if schema_version > latest_supported:
@@ -225,15 +233,18 @@ class MigrationService:
             backup_directory / f"pre-migration-{stamp}.db"
         )
 
-        with sqlite3.connect(self.database_path) as connection:
-            connection.execute(
+        tracking_connection = sqlite3.connect(self.database_path)
+        try:
+            tracking_connection.execute(
                 "create table if not exists schema_migrations ("
                 "version integer primary key, "
                 "name text not null, "
                 "checksum text not null, "
                 "applied_at text not null)"
             )
-            connection.commit()
+            tracking_connection.commit()
+        finally:
+            tracking_connection.close()
 
         by_version = {migration.version: migration for migration in self.migrations}
         applied_now: list[dict[str, object]] = []
