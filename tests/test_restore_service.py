@@ -182,3 +182,51 @@ def test_restore_source_cannot_be_the_active_database(tmp_path: Path) -> None:
 
     with pytest.raises(RestorePlanError, match="must differ"):
         RestoreService(target).plan_restore(target)
+
+
+def test_sidecar_removal_retries_transient_file_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sidecar = tmp_path / "memory.db-wal"
+    sidecar.write_bytes(b"wal")
+    original_unlink = Path.unlink
+    calls = 0
+
+    def flaky_unlink(path: Path, missing_ok: bool = False) -> None:
+        nonlocal calls
+        if path == sidecar:
+            calls += 1
+            if calls < 3:
+                raise PermissionError("transient Windows file handle")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+
+    RestoreService._remove_sidecar_with_retry(sidecar, attempts=3, delay_seconds=0)
+
+    assert calls == 3
+    assert not sidecar.exists()
+
+
+def test_sidecar_removal_fails_closed_when_lock_persists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sidecar = tmp_path / "memory.db-wal"
+    sidecar.write_bytes(b"wal")
+    original_unlink = Path.unlink
+    calls = 0
+
+    def locked_unlink(path: Path, missing_ok: bool = False) -> None:
+        nonlocal calls
+        if path == sidecar:
+            calls += 1
+            raise PermissionError("persistent Windows file handle")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", locked_unlink)
+
+    with pytest.raises(RestoreExecutionError, match="sidecar is in use"):
+        RestoreService._remove_sidecar_with_retry(sidecar, attempts=3, delay_seconds=0)
+
+    assert calls == 3
+    assert sidecar.exists()
