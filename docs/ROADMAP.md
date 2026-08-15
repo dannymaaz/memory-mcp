@@ -1,6 +1,6 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap reflects merged work through PR #41. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
+This roadmap reflects merged work through PR #46. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
 
 ## Status legend
 
@@ -21,7 +21,7 @@ This roadmap reflects merged work through PR #41. Persistent Memory MCP is a loc
 
 Remaining release work:
 
-- upgrade/uninstall validation against an existing 0.2.0 installation;
+- released-upgrade/uninstall validation against an existing 0.2.0 installation;
 - final release publication and rollback documentation.
 
 ### Local storage and isolation — ✅ Complete
@@ -30,6 +30,7 @@ Remaining release work:
 - Owner/project isolation on runtime reads and writes.
 - Optional self-managed Supabase/PostgreSQL adapters.
 - Import/export compatibility and packaged local schema.
+- Versioned local migration foundation with checksum tracking.
 
 ### Security and retention — ✅ Complete
 
@@ -41,7 +42,7 @@ Remaining release work:
 - Rejection of altered, expired, cross-scope or reused plans.
 - Exact ID deletion, pre-mutation revalidation and audit metadata without deleted content.
 
-### Verified SQLite backup and health — ✅ Complete foundation
+### Verified SQLite backup, health and recovery — ✅ Complete foundation
 
 PR #29 established recoverable local backup creation:
 
@@ -70,6 +71,26 @@ PR #39 added read-only SQLite health and maintenance-readiness diagnostics:
 - DB/WAL/SHM sizes and free disk space;
 - latest verified SHA-256 backup awareness;
 - safe JSON output without memory values or the absolute active database path.
+
+PR #43 added confirmed two-phase restore, and PR #46 completed cross-platform hardening:
+
+- restore plans validate the selected verified backup, schema compatibility and available disk space;
+- HMAC confirmation is short-lived, plan-bound and single-use;
+- the active database receives a fresh verified safety backup before replacement;
+- logical SQLite state is fingerprinted through a consistent WAL-aware snapshot, avoiding false drift from filesystem metadata changes;
+- WAL/SHM sidecars are cleared with bounded retry behavior and persistent locks fail closed;
+- replacement is atomic and post-restore validation is mandatory;
+- automatic rollback restores the pre-restore safety backup if post-replacement validation fails.
+
+PR #45 added the first formal local migration framework:
+
+- read-only migration preview;
+- `schema_migrations` history recorded only during execution;
+- stable ordered migration versions and SHA-256 checksums;
+- future/inconsistent schema-history states are rejected;
+- pending migrations require a verified pre-migration backup;
+- each migration is transactional and recorded only after success;
+- the v0.2 schema upgrade path is covered by a regression that preserves existing data.
 
 ### Context, search and embeddings — ✅ Complete foundation
 
@@ -126,14 +147,14 @@ Completed:
 - read-only project, session, decision, task, warning, retention and deployment views;
 - bounded filtering and JSON/CSV export;
 - Galaxy knowledge visualization with bounded graphs;
-- confirmed deletion MCP workflow available as the safe maintenance foundation.
+- confirmed deletion and verified restore are available through safe MCP maintenance workflows.
 
 Remaining:
 
 - explicit pagination cursors;
 - operational summary cards for storage, staleness, verification and sensitivity;
 - polished empty, loading and error states;
-- safe maintenance controls for backup, restore and confirmed deletion.
+- dashboard controls for backup, restore and confirmed deletion that consume existing safety gates without bypassing them.
 
 ## Product scope decision
 
@@ -153,13 +174,13 @@ Workspace invitations, team roles, shared memory, public remote dashboards, bill
 
 ## v0.3.0 — Data Safety and Recovery
 
-### 1. Verified backup creation and manifests — ✅ Complete foundation
+### 1. Verified backup creation and manifests — ✅ Complete
 
 - [x] Consistent WAL-safe SQLite backup — PR #29 / issue #28.
 - [x] Integrity validation and bounded metadata — PR #29.
 - [x] Versioned SHA-256 manifest and tamper verification — PR #35 / issue #31.
 
-### 2. Database health and integrity — ✅ Complete foundation
+### 2. Database health and integrity — ✅ Complete
 
 PR #39 / issue #32 delivered:
 
@@ -170,28 +191,33 @@ PR #39 / issue #32 delivered:
 - [x] Latest verified backup discovery without memory contents.
 - [x] `maintenance_ready` status requiring both healthy structure and a verified backup.
 
-### 3. Two-phase verified restore — ⬜ Planned
+### 3. Two-phase verified restore — ✅ Complete
 
-Tracked by issue #33.
+PR #43 / issue #33 delivered the restore contract; PR #46 completed cross-platform hardening.
 
-- Validate checksum, integrity, schema compatibility and available space.
-- Produce an exact restore preview before mutation.
-- Require explicit confirmation bound to the unchanged plan.
-- Create a fresh verified backup of the active database before replacement.
-- Replace the active database safely and recover from interrupted failures.
+- [x] Validate checksum, integrity, schema compatibility and available space.
+- [x] Produce an exact restore preview before mutation.
+- [x] Require explicit confirmation bound to the unchanged plan.
+- [x] Create a fresh verified backup of the active database before replacement.
+- [x] Use WAL-aware logical-state fingerprinting for drift detection.
+- [x] Replace atomically and automatically rollback after failed post-restore validation.
+- [x] Fail closed on busy checkpoints or persistent WAL/SHM locks.
+- [x] Validate on Ubuntu, Windows and macOS across Python 3.11–3.13.
 
-### 4. Versioned SQLite migrations — ⬜ Planned
+### 4. Versioned SQLite migrations — ✅ Complete foundation
 
-Tracked by issue #34.
+PR #45 / issue #34 delivered:
 
-- Add `schema_migrations` tracking.
-- Package ordered SQLite migration files.
-- Record and validate migration checksums.
-- Execute migrations transactionally.
-- Require verified backup before irreversible migrations.
-- Validate upgrade from the current 0.2.0 schema.
+- [x] `schema_migrations` tracking.
+- [x] Ordered packaged migration modules.
+- [x] SHA-256 migration checksums and altered-history detection.
+- [x] Transactional migration execution.
+- [x] Verified backup before applying pending migrations.
+- [x] Future/inconsistent schema history rejection.
+- [x] Upgrade regression from the current v0.2 schema with existing data preserved.
+- [x] Wheel/sdist clean-install validation on Ubuntu, Windows and macOS.
 
-### 5. Configuration and package cleanup — ✅ Complete foundation
+### 5. Configuration and package cleanup — 🟡 Partial
 
 PR #30 aligned installation and runtime behavior with the local-first product direction:
 
@@ -208,13 +234,21 @@ PR #41 completed built-artifact validation:
 - packaged SQLite/runtime assets are inspected directly;
 - the wheel is installed in a clean environment outside the repository checkout;
 - installed `init`, `doctor`, `status` and `health` commands are smoke-tested on Ubuntu, Windows and macOS;
-- a real Windows CP1252 redirected-console bug was fixed by replacing Unicode status glyphs with portable ASCII markers;
-- license metadata was modernized for current setuptools behavior.
+- a real Windows redirected-console encoding bug was fixed with portable ASCII status markers.
+
+PR #47 is the active Settings cleanup:
+
+- one validated immutable RuntimeSettings contract;
+- SQLite default in the Settings contract;
+- canonical `MEMORY_BACKEND` plus bounded deprecation warning for `MEMORY_STORAGE_BACKEND`;
+- fail-closed conflicting aliases;
+- masked remote/confirmation secrets;
+- incremental migration of runtime consumers without breaking MCP tool names.
 
 Remaining architectural cleanup:
 
-- centralize configuration in one Settings object — issue #37;
-- add a formal deprecation path for the legacy backend alias — issue #37.
+- finish migrating critical direct environment reads to RuntimeSettings;
+- complete the documented deprecation path before removing legacy behavior.
 
 ### 6. Dashboard completion — ⬜ Planned
 
@@ -235,16 +269,17 @@ Completed:
 - [x] Build and validate wheel and sdist artifacts — PR #41 / issue #38.
 - [x] Install the wheel in clean environments on Ubuntu, Windows and macOS.
 - [x] Run installed CLI smoke tests outside the source checkout.
+- [x] Validate a v0.2-shaped SQLite database through the versioned migration path — PR #45.
 
 Remaining:
 
-- [ ] Validate upgrade from 0.2.0 and uninstall/rollback behavior against an existing installation.
+- [ ] Validate released-package upgrade/uninstall/rollback behavior against an actual installed 0.2.0 package environment.
 - [ ] Publish GitHub Release and PyPI artifacts with checksums.
 - [ ] Prepare MCP Registry submission.
 
 ## Final product validation
 
-- [ ] Upgrade from an existing 0.2.0 installation.
+- [ ] Released-package upgrade/uninstall/rollback from an existing 0.2.0 installation.
 - [x] Clean wheel installation on Ubuntu, Windows and macOS.
 - [x] Safe multi-client configuration and rollback foundation.
 - [x] SQLite local-first storage.
@@ -254,11 +289,12 @@ Remaining:
 - [x] WAL-safe verified local backup.
 - [x] Versioned SHA-256 backup manifests and tamper detection.
 - [x] Health and integrity diagnostics.
+- [x] Confirmed two-phase restore and rollback foundation.
+- [x] Versioned SQLite migrations and v0.2 schema/data upgrade regression.
 - [x] SQLite-first core packaging with optional remote extras.
 - [x] Core CI on Ubuntu, Windows and macOS across Python 3.11–3.13.
 - [x] Wheel/sdist metadata and clean-install validation.
-- [ ] Confirmed two-phase restore and disaster recovery.
-- [ ] Versioned SQLite migrations.
+- [ ] Centralized Settings migration complete.
 - [ ] Complete automatic continuation.
 - [x] Git-grounded stale-memory classification foundation.
 - [ ] Persistent symbol history and full impact analysis.
@@ -267,3 +303,13 @@ Remaining:
 - [x] Galaxy knowledge view.
 - [ ] Release and registry publication.
 - [x] Teams, roles and remote collaboration excluded from scope.
+
+## Recommended implementation order
+
+1. Finish centralized Settings and legacy alias deprecation — issue #37 / PR #47.
+2. Validate released-package upgrade/uninstall/rollback from an actual 0.2.0 installation.
+3. Complete dashboard pagination, health cards and safe maintenance actions.
+4. Complete automatic project resolution and continuation checkpoints.
+5. Persist and enrich the symbol graph across revisions.
+6. Finalize release notes, rollback instructions and publish v0.3.0.
+7. Prepare MCP Registry submission.
