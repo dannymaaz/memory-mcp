@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any, Callable
 
 from .maintenance import RestorePlan, RestoreService
-from .storage import normalize_backend
+from .settings import RuntimeSettings
 
 
 def _replace_registered_tool(server: Any, name: str, function: Callable[..., Any]) -> None:
@@ -41,17 +39,19 @@ def _register(server_module: Any, name: str, description: str, function: Callabl
         schemas.append({"name": name, "description": description})
 
 
-def install_verified_restore(server_module: Any) -> tuple[Callable[..., Any], Callable[..., Any]]:
+def install_verified_restore(
+    server_module: Any,
+    settings: RuntimeSettings | None = None,
+) -> tuple[Callable[..., Any], Callable[..., Any]]:
     """Install local restore preview and execution tools once."""
     if getattr(server_module, "_verified_restore_installed", False):
         return server_module.plan_memory_restore, server_module.execute_memory_restore
 
     def _service() -> RestoreService:
-        backend = normalize_backend(os.getenv("MEMORY_BACKEND") or "sqlite")
-        if backend != "sqlite":
+        active_settings = settings or RuntimeSettings.from_env()
+        if active_settings.backend != "sqlite":
             raise RuntimeError("verified restore currently supports the local SQLite backend only")
-        target = os.getenv("SQLITE_PATH") or str(Path.home() / ".memory-mcp" / "memory.db")
-        return RestoreService(target)
+        return RestoreService(active_settings.sqlite_path)
 
     def plan_memory_restore(
         backup_path: str,
