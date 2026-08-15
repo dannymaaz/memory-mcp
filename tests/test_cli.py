@@ -14,8 +14,11 @@ from persistent_memory_mcp.cli import (
     _read_env,
     _write_client_configs,
     _write_env,
+    build_parser,
+    command_health,
     command_status,
 )
+from persistent_memory_mcp.storage import SQLiteStorage
 
 
 VALUES = {
@@ -89,3 +92,49 @@ def test_status_is_safe(tmp_path: Path, capsys) -> None:
     assert payload["configured"] is True
     assert payload["supported_clients"] == list(CLIENTS)
     assert "secret-value" not in output
+
+
+def test_health_parser_exposes_full_and_backup_directory_options() -> None:
+    args = build_parser().parse_args(["health", "--full", "--backup-dir", "backups"])
+    assert args.command == "health"
+    assert args.full is True
+    assert args.backup_dir == "backups"
+    assert args.func is command_health
+
+
+def test_health_command_reports_safe_sqlite_json(tmp_path: Path, capsys) -> None:
+    database = tmp_path / "memory.db"
+    SQLiteStorage(database).initialize()
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        f"MEMORY_BACKEND=sqlite\nSQLITE_PATH={database}\nOWNER_ID=test-owner\n",
+        encoding="utf-8",
+    )
+
+    result = command_health(
+        Namespace(env=str(env_path), full=True, backup_dir=None)
+    )
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+
+    assert result == 0
+    assert payload["status"] == "healthy"
+    assert payload["database_name"] == "memory.db"
+    assert payload["quick_check"] == ["ok"]
+    assert payload["integrity_check"] == ["ok"]
+    assert str(database.parent) not in output
+
+
+def test_health_command_rejects_remote_backend(tmp_path: Path, capsys) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "MEMORY_BACKEND=supabase\nOWNER_ID=test-owner\n",
+        encoding="utf-8",
+    )
+
+    result = command_health(Namespace(env=str(env_path), full=False, backup_dir=None))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert result == 2
+    assert payload["status"] == "unsupported"
+    assert payload["backend"] == "supabase"
