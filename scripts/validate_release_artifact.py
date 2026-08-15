@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -47,10 +48,10 @@ def _venv_python(root: Path) -> Path:
     return root / "bin" / "python"
 
 
-def _venv_entrypoint(root: Path) -> Path:
+def _venv_entrypoint(root: Path, name: str = "memory-mcp") -> Path:
     if os.name == "nt":
-        return root / "Scripts" / "memory-mcp.exe"
-    return root / "bin" / "memory-mcp"
+        return root / "Scripts" / f"{name}.exe"
+    return root / "bin" / name
 
 
 def _validate_archive_assets(dist_dir: Path) -> Path:
@@ -69,6 +70,8 @@ def _validate_archive_assets(dist_dir: Path) -> Path:
             "persistent_memory_mcp/sqlite_schema.sql",
             "persistent_memory_mcp/__init__.py",
             "persistent_memory_mcp/runtime.py",
+            "persistent_memory_mcp/migration_cli.py",
+            "persistent_memory_mcp/migration_service.py",
         }
         missing = sorted(required_assets - names)
         if missing:
@@ -79,6 +82,8 @@ def _validate_archive_assets(dist_dir: Path) -> Path:
         required_suffixes = (
             "/persistent_memory_mcp/sqlite_schema.sql",
             "/persistent_memory_mcp/runtime.py",
+            "/persistent_memory_mcp/migration_cli.py",
+            "/persistent_memory_mcp/migration_service.py",
             "/pyproject.toml",
             "/README.md",
         )
@@ -101,6 +106,7 @@ def validate(dist_dir: Path) -> None:
         venv.EnvBuilder(with_pip=True, clear=True).create(venv_dir)
         python = _venv_python(venv_dir)
         entrypoint = _venv_entrypoint(venv_dir)
+        migration_entrypoint = _venv_entrypoint(venv_dir, "memory-mcp-migrate")
 
         clean_env = os.environ.copy()
         clean_env.pop("PYTHONPATH", None)
@@ -114,6 +120,11 @@ def validate(dist_dir: Path) -> None:
         )
         if not entrypoint.exists():
             raise RuntimeError(f"Installed wheel did not create the memory-mcp entrypoint: {entrypoint}")
+        if not migration_entrypoint.exists():
+            raise RuntimeError(
+                "Installed wheel did not create the memory-mcp-migrate entrypoint: "
+                f"{migration_entrypoint}"
+            )
 
         dependency_check = _run(
             [
@@ -157,6 +168,32 @@ def validate(dist_dir: Path) -> None:
             raise RuntimeError("Clean wheel install did not initialize the SQLite database")
         if not (config_dir / "codex-config.toml").exists():
             raise RuntimeError("Clean wheel install did not generate the expected client configuration")
+
+        connection = sqlite3.connect(sqlite_path)
+        try:
+            schema_version = int(connection.execute("pragma user_version").fetchone()[0])
+            migration_rows = connection.execute(
+                "select version from schema_migrations order by version"
+            ).fetchall()
+        finally:
+            connection.close()
+        if schema_version != 1 or migration_rows != [(1,)]:
+            raise RuntimeError(
+                "Fresh wheel initialization did not bootstrap current migration state: "
+                f"user_version={schema_version}, history={migration_rows}"
+            )
+
+        migration_preview = _run(
+            [str(migration_entrypoint), "--env", str(env_path)],
+            cwd=work_dir,
+            env=clean_env,
+        )
+        migration_payload = json.loads(migration_preview.stdout)
+        plan = migration_payload.get("plan") or {}
+        if migration_payload.get("status") != "preview" or plan.get("pending") != []:
+            raise RuntimeError(
+                f"Fresh wheel install unexpectedly has pending migrations: {migration_payload}"
+            )
 
         _run([str(entrypoint), "doctor", "--env", str(env_path)], cwd=work_dir, env=clean_env)
         status = _run(

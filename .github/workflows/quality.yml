@@ -50,6 +50,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -64,6 +66,8 @@ jobs:
         run: python -c "from pathlib import Path; import subprocess, sys; files=[str(p) for p in Path('dist').iterdir()]; subprocess.check_call([sys.executable, '-m', 'twine', 'check', *files])"
       - name: Validate clean wheel installation
         run: python scripts/validate_release_artifact.py dist
+      - name: Validate installed v0.2.0 upgrade path
+        run: python scripts/validate_v020_upgrade.py dist .
 
   dependency-audit:
     name: Dependency audit · core and remote extras

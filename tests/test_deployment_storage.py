@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 from persistent_memory_mcp.deployment_storage import install_deployment_storage
 from persistent_memory_mcp.storage import SQLiteStorage
 
@@ -37,3 +39,23 @@ def test_deployment_storage_creates_table(tmp_path) -> None:
     assert row["service"] == "api"
     assert row["tests"] == ["pytest"]
     assert row["rollback_plan"] == {"available": True}
+
+
+def test_deployment_wrapper_preserves_initialize_keyword_options(tmp_path) -> None:
+    install_deployment_storage()
+    database = tmp_path / "legacy.db"
+    storage = SQLiteStorage(database)
+
+    storage.initialize(bootstrap_migrations=False)
+
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute("pragma user_version").fetchone()[0] == 0
+        assert connection.execute(
+            "select 1 from sqlite_master where type='table' and name='deployment_records'"
+        ).fetchone() == (1,)
+        assert connection.execute(
+            "select 1 from sqlite_master where type='table' and name='schema_migrations'"
+        ).fetchone() is None
+    finally:
+        connection.close()
