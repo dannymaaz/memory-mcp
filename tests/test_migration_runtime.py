@@ -16,7 +16,7 @@ from persistent_memory_mcp.storage import SQLiteStorage
 
 def _legacy_database(path: Path) -> None:
     storage = SQLiteStorage(path)
-    storage.initialize()
+    storage.initialize(bootstrap_migrations=False)
     connection = sqlite3.connect(path)
     try:
         assert int(connection.execute("pragma user_version").fetchone()[0]) == 0
@@ -159,3 +159,14 @@ def test_runtime_guard_allows_missing_database_for_first_init(tmp_path: Path) ->
     settings = RuntimeSettings(backend="sqlite", sqlite_path=tmp_path / "missing.db")
 
     _assert_migration_ready(settings)
+
+
+def test_new_sqlite_database_is_initialized_at_current_schema(tmp_path: Path) -> None:
+    database = tmp_path / "fresh.db"
+
+    SQLiteStorage(database).initialize()
+
+    plan = MigrationService(database).plan()
+    assert plan.schema_version == 1
+    assert plan.pending == ()
+    assert [item["version"] for item in plan.applied] == [1]
