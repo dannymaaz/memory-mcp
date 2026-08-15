@@ -17,6 +17,7 @@ from .client_installer import (
     rollback_config,
     uninstall_client_config,
 )
+from .maintenance import HealthError, HealthService
 from .storage import SQLiteStorage, normalize_backend
 
 CLIENTS = ("codex", "claude", "opencode", "antigravity")
@@ -383,6 +384,36 @@ def command_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_health(args: argparse.Namespace) -> int:
+    """Print a bounded SQLite integrity report without memory contents."""
+    values = _load_values(args.env)
+    try:
+        backend = normalize_backend(values.get("MEMORY_BACKEND") or "sqlite")
+    except ValueError as exc:
+        print(json.dumps({"status": "error", "error": {"code": "invalid_backend", "message": str(exc)}}, indent=2))
+        return 2
+    if backend != "sqlite":
+        print(json.dumps({
+            "status": "unsupported",
+            "backend": backend,
+            "message": "memory-mcp health currently supports the local SQLite backend only.",
+        }, indent=2))
+        return 2
+    database = values.get("SQLITE_PATH") or str(Path.home() / ".memory-mcp" / "memory.db")
+    try:
+        result = HealthService(database, backup_directory=args.backup_dir).check(
+            full_integrity=args.full
+        )
+    except HealthError as exc:
+        print(json.dumps({
+            "status": "error",
+            "error": {"code": exc.code, "message": str(exc)},
+        }, indent=2))
+        return 1
+    print(json.dumps(result.as_dict(), indent=2))
+    return 0 if result.status == "healthy" else 1
+
+
 def command_serve(_args: argparse.Namespace) -> int:
     from src.server import main as server_main
     server_main()
@@ -432,6 +463,11 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="Show a safe configuration summary")
     status.add_argument("--env", default=".env")
     status.set_defaults(func=command_status)
+    health = sub.add_parser("health", help="Check local SQLite integrity and maintenance readiness")
+    health.add_argument("--env", default=".env")
+    health.add_argument("--full", action="store_true", help="Run full PRAGMA integrity_check")
+    health.add_argument("--backup-dir", help="Directory containing verified backup manifests")
+    health.set_defaults(func=command_health)
     serve = sub.add_parser("serve", help="Run the MCP server over stdio")
     serve.set_defaults(func=command_serve)
     return parser
