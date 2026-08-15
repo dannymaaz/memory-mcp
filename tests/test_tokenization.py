@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from persistent_memory_mcp.tokenization import (
+    DETERMINISTIC_TOKENIZER_NAME,
+    LEGACY_DETERMINISTIC_TOKENIZER_NAME,
     DeterministicTokenCounter,
     measure_tokens,
     resolve_token_counter,
@@ -14,17 +16,23 @@ FIXTURES = Path(__file__).parent / "fixtures"
 MAX_REFERENCE_ERROR_PERCENT = 40.0
 
 
-def test_deterministic_counter_preserves_historical_estimator_contract() -> None:
+def test_deterministic_counter_preserves_short_historical_estimator_contract() -> None:
     counter = DeterministicTokenCounter()
     assert counter.count("abcd") == 1
     assert counter.count("abcdefgh") == 2
     assert counter.count({"mensaje": "hola"}) >= 1
 
 
+def test_legacy_deterministic_identifier_resolves_to_current_fallback() -> None:
+    counter = resolve_token_counter(tokenizer=LEGACY_DETERMINISTIC_TOKENIZER_NAME)
+    assert counter.name == DETERMINISTIC_TOKENIZER_NAME
+    assert counter.exact is False
+
+
 def test_auto_unknown_model_keeps_local_deterministic_fallback() -> None:
     counter = resolve_token_counter(model="provider-model-without-local-mapping", tokenizer="auto")
     assert counter.exact is False
-    assert counter.name == "deterministic-char4-v1"
+    assert counter.name == DETERMINISTIC_TOKENIZER_NAME
     assert counter.model == "provider-model-without-local-mapping"
 
 
