@@ -7,8 +7,13 @@ import math
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-DETERMINISTIC_TOKENIZER_NAME = "deterministic-char4-v1"
+DETERMINISTIC_TOKENIZER_NAME = "deterministic-heuristic-v2"
+LEGACY_DETERMINISTIC_TOKENIZER_NAME = "deterministic-char4-v1"
 DEFAULT_TIKTOKEN_ENCODING = "o200k_base"
+_PROSE_MIN_CHARS = 80
+_PROSE_MIN_WHITESPACE_RATIO = 0.12
+_PROSE_MAX_STRUCTURAL_RATIO = 0.035
+_STRUCTURAL_CHARS = frozenset("{}[]()<>:=_`\\|@#$%^&*+;\"")
 
 
 class TokenizerUnavailableError(RuntimeError):
@@ -34,9 +39,22 @@ def serialize_for_tokens(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
 
+def _looks_like_natural_prose(serialized: str) -> bool:
+    """Distinguish prose from code/JSON using stable character-class ratios."""
+    length = len(serialized)
+    if length < _PROSE_MIN_CHARS:
+        return False
+    whitespace = sum(character.isspace() for character in serialized) / length
+    structural = sum(character in _STRUCTURAL_CHARS for character in serialized) / length
+    return (
+        whitespace >= _PROSE_MIN_WHITESPACE_RATIO
+        and structural <= _PROSE_MAX_STRUCTURAL_RATIO
+    )
+
+
 @dataclass(frozen=True)
 class DeterministicTokenCounter:
-    """Provider-free deterministic fallback compatible with the historical estimator."""
+    """Provider-free fallback tuned for prose while remaining conservative for code/JSON."""
 
     model: str | None = None
     name: str = DETERMINISTIC_TOKENIZER_NAME
@@ -44,7 +62,8 @@ class DeterministicTokenCounter:
 
     def count(self, payload: Any) -> int:
         serialized = serialize_for_tokens(payload)
-        return max(1, math.ceil(len(serialized) / 4))
+        chars_per_token = 5 if _looks_like_natural_prose(serialized) else 4
+        return max(1, math.ceil(len(serialized) / chars_per_token))
 
 
 class TikTokenCounter:
@@ -129,7 +148,13 @@ def resolve_token_counter(
         return tokenizer
 
     requested = (tokenizer or "auto").strip().lower()
-    if requested in {"deterministic", "fallback", DETERMINISTIC_TOKENIZER_NAME}:
+    deterministic_names = {
+        "deterministic",
+        "fallback",
+        DETERMINISTIC_TOKENIZER_NAME,
+        LEGACY_DETERMINISTIC_TOKENIZER_NAME,
+    }
+    if requested in deterministic_names:
         return DeterministicTokenCounter(model=model)
 
     if requested == "auto":
