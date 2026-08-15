@@ -10,6 +10,10 @@ from .errors import (
     BackupVerificationError,
     HealthError,
     MaintenanceError,
+    MigrationChecksumError,
+    MigrationCompatibilityError,
+    MigrationError,
+    MigrationExecutionError,
 )
 from .health import HealthResult, HealthService
 from .manifest import (
@@ -19,6 +23,7 @@ from .manifest import (
     sha256_file,
     verify_backup_manifest,
 )
+from .migrations import Migration, MigrationPlan, MigrationService
 
 __all__ = [
     "BackupDestinationError",
@@ -34,6 +39,13 @@ __all__ = [
     "HealthResult",
     "HealthService",
     "MaintenanceError",
+    "Migration",
+    "MigrationChecksumError",
+    "MigrationCompatibilityError",
+    "MigrationError",
+    "MigrationExecutionError",
+    "MigrationPlan",
+    "MigrationService",
     "load_backup_manifest",
     "manifest_path_for",
     "sha256_file",
