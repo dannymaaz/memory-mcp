@@ -38,6 +38,7 @@ The intended product is personal and local-first: one local installation, one pr
 | Confirmed deletion | Preview exact records and require a signed confirmation before deletion |
 | Verified local backup | Create WAL-safe SQLite backups with integrity validation |
 | SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
+| Health diagnostics | Check SQLite integrity and maintenance readiness without mutating data |
 | Private local dashboard | Inspect project memory without exposing it remotely |
 
 ## Quick start
@@ -80,9 +81,22 @@ The core package and regression suite are validated on Ubuntu, Windows and macOS
 ```bash
 memory-mcp doctor
 memory-mcp status
+memory-mcp health
 ```
 
-A richer `memory-mcp health` integrity report is tracked for v0.3.0 before restore and migration workflows are enabled.
+For a full SQLite integrity check:
+
+```bash
+memory-mcp health --full
+```
+
+To include maintenance readiness based on verified backups, point the command at the directory containing backup manifests:
+
+```bash
+memory-mcp health --backup-dir ~/.memory-mcp/backups
+```
+
+`memory-mcp health` opens the active SQLite database read-only. It reports bounded `quick_check` results, optional `integrity_check`, foreign-key violations, expected-index gaps, database/WAL/SHM sizes, free disk space and the latest valid SHA-256 backup manifest without returning stored memory values or the absolute database path.
 
 ### 4. Add it to your MCP client
 
@@ -145,7 +159,7 @@ The server detects repository context, resolves or creates the current project, 
 | `plan_memory_deletion` | Preview exact deletion candidates and issue a short-lived signed token |
 | `execute_memory_deletion` | Execute only the unchanged, scoped and confirmed plan |
 
-Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Verified backup services currently live in the maintenance API while the v0.3 CLI/dashboard maintenance UX is completed.
+Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Verified backup and health services are now available as the maintenance foundation while restore and dashboard maintenance controls are completed for v0.3.
 
 ## Confirmed deletion safety model
 
@@ -162,6 +176,8 @@ PR #29 introduced consistent SQLite backup creation with `sqlite3.Connection.bac
 
 PR #35 adds a versioned JSON manifest to every successful backup with a SHA-256 digest, package/SQLite/schema versions, size, integrity result and bounded table counts. Manifest verification rejects changed or malformed backups without placing stored memory values or source database paths in the manifest.
 
+PR #39 adds read-only SQLite health diagnostics so maintenance can verify the active database, structural indexes, foreign keys, storage headroom and available verified backups before later restore or migration operations.
+
 Restore remains intentionally unavailable until the v0.3 two-phase restore workflow can validate the selected backup, preview the exact operation, create a fresh safety backup and require explicit confirmation.
 
 ## Privacy and security
@@ -172,6 +188,7 @@ Restore remains intentionally unavailable until the v0.3 two-phase restore workf
 - Sensitive values are redacted before persistence.
 - Destructive operations require a short-lived confirmation tied to an exact plan.
 - Backup manifests contain structural verification metadata, not memory values.
+- Health diagnostics are read-only and expose bounded structural state rather than memory contents.
 - Keep local configuration and confirmation secrets private.
 - Create a verified backup before upgrades, migrations or destructive maintenance.
 
@@ -194,9 +211,9 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] Selective deletion and confirmed retention execution
 - [x] WAL-safe SQLite backup with integrity validation
 - [x] Versioned SHA-256 backup manifests and tamper detection
+- [x] SQLite health and maintenance-readiness diagnostics
 - [x] SQLite-first core packaging with optional remote database extras
 - [x] Ubuntu, Windows and macOS CI across Python 3.11–3.13
-- [ ] `memory-mcp health` and integrity diagnostics
 - [ ] Confirmed two-phase SQLite restore
 - [ ] Versioned SQLite migrations and 0.2.0 upgrade validation
 - [ ] Dashboard pagination and operational summary cards
