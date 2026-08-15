@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from persistent_memory_mcp.context_engine import build_context, estimate_tokens
+from persistent_memory_mcp.context_packet import build_context_packet
 from persistent_memory_mcp.project_guardrails import compact_guardrails
 
 
@@ -176,7 +177,7 @@ class ContextOptimizer:
         max_tokens: int | None = None,
         include_untrusted: bool = False,
     ) -> dict[str, Any]:
-        """Optimize context for one consumer interface and annotate strategy."""
+        """Optimize one consumer response and expose the versioned Context Packet contract."""
         interface_key = interface_name.strip().lower() or "native"
         resolved_intent, resolved_layer, requested_budget, resolved_untrusted = self._resolve_options(
             context,
@@ -196,13 +197,15 @@ class ContextOptimizer:
             limit=limit,
             include_untrusted=resolved_untrusted,
         )
-        optimized["interface"] = interface_key
-        optimized["token_estimate"] = estimate_tokens(optimized)
+        metadata = self._essential_metadata(self._prepare_context(context))
+        token_estimate = estimate_tokens(optimized)
         guardrails_loaded = bool(
             isinstance(optimized.get("project"), dict)
             and optimized["project"].get("guardrails")
         )
-        optimized["strategy"] = {
+        original_estimate = estimate_tokens(context)
+        saved_tokens = max(0, original_estimate - token_estimate)
+        strategy = {
             "limit": limit,
             "layer": result.layer,
             "intent": resolved_intent,
@@ -212,14 +215,27 @@ class ContextOptimizer:
                 if interface_key in {"opencode", "claude-code", "qwen-code", "codex"}
                 else "reasoning"
             ),
-            "saved_tokens": max(0, estimate_tokens(context) - estimate_tokens(optimized)),
-            "savings_percent": round(
-                max(0, estimate_tokens(context) - estimate_tokens(optimized))
-                / max(1, estimate_tokens(context))
-                * 100,
-                2,
-            ),
+            "saved_tokens": saved_tokens,
+            "savings_percent": round(saved_tokens / max(1, original_estimate) * 100, 2),
             "compressed_items": result.metrics.compressed_items,
             "guardrails_loaded": guardrails_loaded,
         }
-        return optimized
+        fixed_fields: dict[str, Any] = {
+            "interface": interface_key,
+            "token_estimate": token_estimate,
+            "strategy": strategy,
+        }
+        if metadata:
+            fixed_fields["metadata"] = metadata
+        model = metadata.get("recommended_model")
+        packet_result = build_context_packet(
+            self._prepare_context(context),
+            intent=resolved_intent,
+            layer=resolved_layer,
+            budget=limit,
+            model=str(model) if model else None,
+            tokenizer="auto",
+            include_untrusted=resolved_untrusted,
+            fixed_fields=fixed_fields,
+        )
+        return packet_result.context
