@@ -89,10 +89,23 @@ class SQLiteStorage:
         connection.execute("pragma journal_mode = wal")
         return connection
 
-    def initialize(self) -> None:
+    def initialize(self, *, bootstrap_migrations: bool = True) -> None:
+        """Create the packaged schema and mark only genuinely new databases current."""
+        database_was_missing = not self.path.exists()
         schema_path = Path(__file__).with_name("sqlite_schema.sql")
-        with self.connect() as connection:
+        connection = self.connect()
+        try:
             connection.executescript(schema_path.read_text(encoding="utf-8"))
+            connection.commit()
+        finally:
+            connection.close()
+
+        if database_was_missing and bootstrap_migrations:
+            # Local import avoids a module cycle: migration_service depends on the
+            # backup maintenance package while storage remains the low-level adapter.
+            from .migration_service import MigrationService
+
+            MigrationService(self.path).bootstrap_fresh_database()
 
     def _validate_table(self, table: str) -> str:
         if table not in self.allowed_tables:
