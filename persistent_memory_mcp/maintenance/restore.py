@@ -265,9 +265,9 @@ class RestoreService:
         }
 
     def _revalidate_plan(self, plan: RestorePlan, target: Path, backup: Path) -> None:
-        target_stat = target.stat()
-        if target_stat.st_size != plan.target_size_bytes or target_stat.st_mtime_ns != plan.target_mtime_ns:
-            raise RestorePlanError("active database changed after restore preview", path=target)
+        # Filesystem size/mtime are retained in the preview for diagnostics and sizing,
+        # but WAL checkpoints and SQLite housekeeping can legitimately change them.
+        # Logical drift is therefore decided by the consistent SQLite snapshot hash.
         if not hmac.compare_digest(self._database_fingerprint(target), plan.target_fingerprint):
             raise RestorePlanError("active database changed after restore preview", path=target)
         manifest = verify_backup_manifest(backup, plan.manifest_path)
