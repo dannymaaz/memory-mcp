@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from dotenv import load_dotenv
 
-from persistent_memory_mcp.storage import create_sqlite_client, normalize_backend
+from persistent_memory_mcp.settings import RuntimeSettings
+from persistent_memory_mcp.storage import create_sqlite_client
 
 try:
     from supabase import Client, create_client
@@ -21,33 +21,42 @@ except Exception:  # pragma: no cover - fallback for environments without depend
 load_dotenv()
 
 
+def _configured_settings() -> RuntimeSettings:
+    """Resolve one validated runtime configuration after dotenv loading."""
+    return RuntimeSettings.from_env()
+
+
 def _configured_backend() -> str:
-    """Resolve the canonical backend while accepting the legacy alias temporarily."""
-    value = os.getenv("MEMORY_BACKEND") or os.getenv("MEMORY_STORAGE_BACKEND") or "sqlite"
-    return normalize_backend(value)
+    """Return the validated canonical backend for compatibility with existing callers."""
+    return _configured_settings().backend
 
 
-def get_supabase_client() -> Any:
-    """Create the configured storage client.
+def get_supabase_client(settings: RuntimeSettings | None = None) -> Any:
+    """Create a storage client from one validated settings object.
 
     The historical function name is preserved for compatibility with the existing
-    service layer. SQLite is the default and returns a local facade exposing the
-    subset of the Supabase query API used by ``src.server``. Remote backends remain
-    opt-in and require their optional dependencies and credentials.
+    service layer. Callers may inject ``RuntimeSettings`` so runtime composition does
+    not need to re-read environment variables. When omitted, settings are resolved
+    once from the current environment for backwards compatibility.
     """
 
-    backend = _configured_backend()
-    if backend == "sqlite":
-        return create_sqlite_client(os.getenv("SQLITE_PATH"))
+    active_settings = settings or _configured_settings()
+    if active_settings.backend == "sqlite":
+        return create_sqlite_client(active_settings.sqlite_path)
 
-    if backend == "postgresql" and not os.getenv("DATABASE_URL", "").strip():
-        raise EnvironmentError("DATABASE_URL must be configured for postgresql backend")
+    if active_settings.backend == "postgresql":
+        if active_settings.database_url is None:
+            raise EnvironmentError("DATABASE_URL must be configured for postgresql backend")
+        # The historical helper still returns the Supabase-compatible query facade.
+        # Direct PostgreSQL storage is configured elsewhere; do not silently reinterpret
+        # DATABASE_URL as Supabase credentials here.
 
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
-    if not supabase_url or not supabase_key:
+    if not active_settings.supabase_url or active_settings.supabase_key is None:
         raise EnvironmentError("SUPABASE_URL and SUPABASE_KEY must be configured")
-    return create_client(supabase_url, supabase_key)
+    return create_client(
+        active_settings.supabase_url,
+        active_settings.supabase_key.get_secret_value(),
+    )
 
 
 def set_owner_context(client: Any, owner_id: str) -> Any:
