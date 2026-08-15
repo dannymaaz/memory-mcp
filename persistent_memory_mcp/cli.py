@@ -113,11 +113,11 @@ def _prompt_clients() -> list[str]:
             try:
                 return _normalize_clients(answer)
             except ValueError as exc:
-                print(f"! {exc}")
+                print(f"[error] {exc}")
                 continue
         if all(1 <= index <= len(CLIENTS) for index in indexes):
             return list(dict.fromkeys(CLIENTS[index - 1] for index in indexes))
-        print("! Enter client numbers from 1 to 5, names, or 'all'.")
+        print("[error] Enter client numbers from 1 to 5, names, or 'all'.")
 
 
 def _prompt_backend(current: str | None = None) -> str:
@@ -169,7 +169,12 @@ def _client_payload(client: str, values: dict[str, str]) -> tuple[str, str]:
     if client == "codex":
         return "codex-config.toml", _codex_toml(values)
     if client == "claude":
-        payload = {"type": "stdio", "command": "memory-mcp", "args": [], "env": _runtime_env(values)}
+        payload = {
+            "type": "stdio",
+            "command": "memory-mcp",
+            "args": [],
+            "env": _runtime_env(values),
+        }
         return "claude-server.json", json.dumps(payload, indent=2) + "\n"
     if client == "opencode":
         return "opencode.json", json.dumps(_opencode_config(values), indent=2) + "\n"
@@ -182,7 +187,12 @@ def _install_payload(client: str, values: dict[str, str]) -> dict[str, object] |
     if client == "codex":
         return _codex_toml(values)
     if client == "claude":
-        return {"type": "stdio", "command": "memory-mcp", "args": [], "env": _runtime_env(values)}
+        return {
+            "type": "stdio",
+            "command": "memory-mcp",
+            "args": [],
+            "env": _runtime_env(values),
+        }
     if client == "opencode":
         return _opencode_config(values)["mcp"]["persistent-memory-mcp"]  # type: ignore[index]
     if client == "antigravity":
@@ -190,7 +200,9 @@ def _install_payload(client: str, values: dict[str, str]) -> dict[str, object] |
     raise ValueError(f"Unsupported client: {client}")
 
 
-def _write_client_configs(output_dir: Path, clients: list[str], values: dict[str, str]) -> dict[str, Path]:
+def _write_client_configs(
+    output_dir: Path, clients: list[str], values: dict[str, str]
+) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}
     for client in clients:
@@ -240,14 +252,18 @@ def command_init(args: argparse.Namespace) -> int:
     env_path = Path(args.env).expanduser().resolve()
     current = _read_env(env_path)
     try:
-        backend = normalize_backend(args.backend) if args.backend else (
-            _prompt_backend(current.get("MEMORY_BACKEND"))
-            if sys.stdin.isatty()
-            else normalize_backend(current.get("MEMORY_BACKEND") or "sqlite")
+        backend = (
+            normalize_backend(args.backend)
+            if args.backend
+            else (
+                _prompt_backend(current.get("MEMORY_BACKEND"))
+                if sys.stdin.isatty()
+                else normalize_backend(current.get("MEMORY_BACKEND") or "sqlite")
+            )
         )
         clients = _selected_clients(args)
     except ValueError as exc:
-        print(f"✗ {exc}")
+        print(f"[error] {exc}")
         return 2
     owner = args.owner_id or current.get("OWNER_ID") or f"owner-{secrets.token_hex(6)}"
     sqlite_default = current.get("SQLITE_PATH") or str(Path.home() / ".memory-mcp" / "memory.db")
@@ -263,21 +279,25 @@ def command_init(args: argparse.Namespace) -> int:
         values["SUPABASE_URL"] = values["SUPABASE_URL"] or input("Supabase URL: ").strip()
         values["SUPABASE_KEY"] = values["SUPABASE_KEY"] or input("Supabase anon key: ").strip()
     if backend == "postgresql" and sys.stdin.isatty():
-        values["DATABASE_URL"] = values["DATABASE_URL"] or input("PostgreSQL DATABASE_URL: ").strip()
+        values["DATABASE_URL"] = values["DATABASE_URL"] or input(
+            "PostgreSQL DATABASE_URL: "
+        ).strip()
     _write_env(env_path, values)
     written = _write_client_configs(Path(args.output_dir).expanduser().resolve(), clients, values)
     ok, detail = _check_backend(values, skip_remote=args.skip_connection_test)
-    print(f"✓ Environment written to {env_path}")
+    print(f"[ok] Environment written to {env_path}")
     for client, path in written.items():
-        print(f"✓ {CLIENT_LABELS[client]} configuration written to {path}")
+        print(f"[ok] {CLIENT_LABELS[client]} configuration written to {path}")
     if getattr(args, "install", False):
         if _confirm("Install into the selected client configuration files?", assume_yes=args.yes):
             for client in clients:
                 result = install_client_config(client, _install_payload(client, values))
-                print(f"{'✓' if result.changed else '='} {client}: {result.config_path}")
+                marker = "[ok]" if result.changed else "[skip]"
+                print(f"{marker} {client}: {result.config_path}")
         else:
-            print("! Automatic installation skipped; generated snippets remain available.")
-    print(f"{'✓' if ok else '✗'} {backend} backend: {detail}")
+            print("[skip] Automatic installation skipped; generated snippets remain available.")
+    marker = "[ok]" if ok else "[error]"
+    print(f"{marker} {backend} backend: {detail}")
     return 0 if ok else 1
 
 
@@ -287,15 +307,20 @@ def command_install(args: argparse.Namespace) -> int:
         normalize_backend(values.get("MEMORY_BACKEND"))
         clients = _selected_clients(args)
     except ValueError as exc:
-        print(f"✗ {exc}")
+        print(f"[error] {exc}")
         return 2
     if not _confirm("Modify the selected client configuration files?", assume_yes=args.yes):
         print("Installation cancelled.")
         return 1
     for client in clients:
-        override = Path(args.config_path).expanduser() if args.config_path and len(clients) == 1 else None
+        override = (
+            Path(args.config_path).expanduser()
+            if args.config_path and len(clients) == 1
+            else None
+        )
         result = install_client_config(client, _install_payload(client, values), config_path=override)
-        print(f"{'✓ installed' if result.changed else '= already configured'} {client}: {result.config_path}")
+        marker = "[ok] installed" if result.changed else "[skip] already configured"
+        print(f"{marker} {client}: {result.config_path}")
         if result.backup_path:
             print(f"  backup: {result.backup_path}")
     return 0
@@ -305,15 +330,20 @@ def command_uninstall(args: argparse.Namespace) -> int:
     try:
         clients = _selected_clients(args)
     except ValueError as exc:
-        print(f"✗ {exc}")
+        print(f"[error] {exc}")
         return 2
     if not _confirm("Remove Persistent Memory MCP from selected clients?", assume_yes=args.yes):
         print("Uninstall cancelled.")
         return 1
     for client in clients:
-        override = Path(args.config_path).expanduser() if args.config_path and len(clients) == 1 else None
+        override = (
+            Path(args.config_path).expanduser()
+            if args.config_path and len(clients) == 1
+            else None
+        )
         result = uninstall_client_config(client, config_path=override)
-        print(f"{'✓ removed' if result.changed else '= not installed'} {client}: {result.config_path}")
+        marker = "[ok] removed" if result.changed else "[skip] not installed"
+        print(f"{marker} {client}: {result.config_path}")
     return 0
 
 
@@ -322,7 +352,13 @@ def command_backups(args: argparse.Namespace) -> int:
     rows = []
     for client in clients:
         path = detect_config_path(client)
-        rows.append({"client": client, "config_path": str(path), "backups": [str(p) for p in list_backups(path)]})
+        rows.append(
+            {
+                "client": client,
+                "config_path": str(path),
+                "backups": [str(p) for p in list_backups(path)],
+            }
+        )
     print(json.dumps({"manifest": installation_manifest(), "clients": rows}, indent=2, default=str))
     return 0
 
@@ -333,13 +369,13 @@ def command_rollback(args: argparse.Namespace) -> int:
     backups = list_backups(config)
     backup = Path(args.backup).expanduser() if args.backup else (backups[0] if backups else None)
     if backup is None:
-        print(f"✗ No backup found for {client}")
+        print(f"[error] No backup found for {client}")
         return 1
     if not _confirm(f"Restore {backup} to {config}?", assume_yes=args.yes):
         print("Rollback cancelled.")
         return 1
     rollback_config(config, backup)
-    print(f"✓ Restored {config} from {backup}")
+    print(f"[ok] Restored {config} from {backup}")
     return 0
 
 
@@ -347,17 +383,17 @@ def command_doctor(args: argparse.Namespace) -> int:
     values = _load_values(args.env)
     failures = int(sys.version_info < (3, 11))
     print("Persistent Memory MCP doctor")
-    print(f"{'✓' if not failures else '✗'} Python {sys.version.split()[0]}")
+    print(f"{'[ok]' if not failures else '[error]'} Python {sys.version.split()[0]}")
     try:
         backend = normalize_backend(values.get("MEMORY_BACKEND"))
     except ValueError as exc:
-        print(f"✗ {exc}")
+        print(f"[error] {exc}")
         return 1
     owner_present = bool(values.get("OWNER_ID"))
-    print(f"{'✓' if owner_present else '✗'} OWNER_ID")
+    print(f"{'[ok]' if owner_present else '[error]'} OWNER_ID")
     failures += int(not owner_present)
     ok, detail = _check_backend(values)
-    print(f"{'✓' if ok else '✗'} {backend} backend ({detail})")
+    print(f"{'[ok]' if ok else '[error]'} {backend} backend ({detail})")
     return 1 if failures or not ok else 0
 
 
@@ -368,19 +404,28 @@ def command_status(args: argparse.Namespace) -> int:
     except ValueError:
         backend = "invalid"
     configured = bool(values.get("OWNER_ID")) and (
-        bool(values.get("SQLITE_PATH")) if backend == "sqlite" else
-        bool(values.get("SUPABASE_URL") and values.get("SUPABASE_KEY")) if backend == "supabase" else
-        bool(values.get("DATABASE_URL"))
+        bool(values.get("SQLITE_PATH"))
+        if backend == "sqlite"
+        else (
+            bool(values.get("SUPABASE_URL") and values.get("SUPABASE_KEY"))
+            if backend == "supabase"
+            else bool(values.get("DATABASE_URL"))
+        )
     )
-    print(json.dumps({
-        "package": "persistent-memory-mcp",
-        "configured": configured,
-        "owner_id": values.get("OWNER_ID", ""),
-        "backend": backend,
-        "sqlite_path": values.get("SQLITE_PATH", "") if backend == "sqlite" else "",
-        "supported_clients": list(CLIENTS),
-        "installations": installation_manifest().get("installations", {}),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "package": "persistent-memory-mcp",
+                "configured": configured,
+                "owner_id": values.get("OWNER_ID", ""),
+                "backend": backend,
+                "sqlite_path": values.get("SQLITE_PATH", "") if backend == "sqlite" else "",
+                "supported_clients": list(CLIENTS),
+                "installations": installation_manifest().get("installations", {}),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -390,14 +435,27 @@ def command_health(args: argparse.Namespace) -> int:
     try:
         backend = normalize_backend(values.get("MEMORY_BACKEND") or "sqlite")
     except ValueError as exc:
-        print(json.dumps({"status": "error", "error": {"code": "invalid_backend", "message": str(exc)}}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": {"code": "invalid_backend", "message": str(exc)},
+                },
+                indent=2,
+            )
+        )
         return 2
     if backend != "sqlite":
-        print(json.dumps({
-            "status": "unsupported",
-            "backend": backend,
-            "message": "memory-mcp health currently supports the local SQLite backend only.",
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "unsupported",
+                    "backend": backend,
+                    "message": "memory-mcp health currently supports the local SQLite backend only.",
+                },
+                indent=2,
+            )
+        )
         return 2
     database = values.get("SQLITE_PATH") or str(Path.home() / ".memory-mcp" / "memory.db")
     try:
@@ -405,10 +463,15 @@ def command_health(args: argparse.Namespace) -> int:
             full_integrity=args.full
         )
     except HealthError as exc:
-        print(json.dumps({
-            "status": "error",
-            "error": {"code": exc.code, "message": str(exc)},
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": {"code": exc.code, "message": str(exc)},
+                },
+                indent=2,
+            )
+        )
         return 1
     print(json.dumps(result.as_dict(), indent=2))
     return 0 if result.status == "healthy" else 1
@@ -416,12 +479,16 @@ def command_health(args: argparse.Namespace) -> int:
 
 def command_serve(_args: argparse.Namespace) -> int:
     from src.server import main as server_main
+
     server_main()
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="memory-mcp", description="Persistent project memory for MCP-compatible AI agents")
+    parser = argparse.ArgumentParser(
+        prog="memory-mcp",
+        description="Persistent project memory for MCP-compatible AI agents",
+    )
     sub = parser.add_subparsers(dest="command")
     init = sub.add_parser("init", help="Configure storage and MCP clients")
     init.add_argument("--env", default=".env")
@@ -463,7 +530,9 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="Show a safe configuration summary")
     status.add_argument("--env", default=".env")
     status.set_defaults(func=command_status)
-    health = sub.add_parser("health", help="Check local SQLite integrity and maintenance readiness")
+    health = sub.add_parser(
+        "health", help="Check local SQLite integrity and maintenance readiness"
+    )
     health.add_argument("--env", default=".env")
     health.add_argument("--full", action="store_true", help="Run full PRAGMA integrity_check")
     health.add_argument("--backup-dir", help="Directory containing verified backup manifests")
