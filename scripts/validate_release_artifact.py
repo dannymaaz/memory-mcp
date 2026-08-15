@@ -115,7 +115,8 @@ def validate(dist_dir: Path) -> None:
                 "-c",
                 "from importlib.metadata import requires; "
                 "r=requires('persistent-memory-mcp') or []; "
-                "assert not any('supabase' in x.lower() or 'psycopg2' in x.lower() for x in r), r",
+                "remote=[x for x in r if 'supabase' in x.lower() or 'psycopg2' in x.lower()]; "
+                "assert all('extra ==' in x.lower() for x in remote), remote",
             ],
             cwd=work_dir,
             env=clean_env,
