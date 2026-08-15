@@ -24,15 +24,21 @@ ENV_KEYS = {
 
 
 def _run(command: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         command,
         cwd=cwd,
         env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        check=True,
+        check=False,
     )
+    if result.returncode != 0:
+        rendered = " ".join(command)
+        raise RuntimeError(
+            f"Release smoke-test command failed ({result.returncode}): {rendered}\n{result.stdout}"
+        )
+    return result
 
 
 def _venv_python(root: Path) -> Path:
@@ -121,7 +127,7 @@ def validate(dist_dir: Path) -> None:
             cwd=work_dir,
             env=clean_env,
         )
-        if dependency_check.returncode != 0:  # pragma: no cover - check=True is the primary guard
+        if dependency_check.returncode != 0:  # pragma: no cover - _run raises first
             raise RuntimeError(dependency_check.stdout)
 
         env_path = work_dir / ".env"
@@ -178,7 +184,7 @@ def validate(dist_dir: Path) -> None:
             cwd=work_dir,
             env=clean_env,
         )
-        if import_check.returncode != 0:  # pragma: no cover
+        if import_check.returncode != 0:  # pragma: no cover - _run raises first
             raise RuntimeError(import_check.stdout)
 
 
