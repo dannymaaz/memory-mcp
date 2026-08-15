@@ -21,10 +21,13 @@ from persistent_memory_mcp.client_installer import (
 
 
 def test_detect_config_paths(tmp_path: Path) -> None:
-    assert detect_config_path("codex", home=tmp_path) == tmp_path / ".codex" / "config.toml"
-    assert detect_config_path("claude", home=tmp_path) == tmp_path / ".claude.json"
     assert (
-        detect_config_path("opencode", home=tmp_path)
+        detect_config_path("codex", home=tmp_path, platform="linux")
+        == tmp_path / ".codex" / "config.toml"
+    )
+    assert detect_config_path("claude", home=tmp_path, platform="linux") == tmp_path / ".claude.json"
+    assert (
+        detect_config_path("opencode", home=tmp_path, platform="linux")
         == tmp_path / ".config" / "opencode" / "opencode.json"
     )
 
