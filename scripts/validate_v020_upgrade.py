@@ -134,6 +134,10 @@ def validate(dist_dir: Path, repo_root: Path) -> None:
         clean_env.pop("PYTHONPATH", None)
         for key in ENV_KEYS:
             clean_env.pop(key, None)
+        # v0.2.0 predates the portable ASCII status-marker fix. Force UTF-8 only
+        # in this historical fixture so redirected output can be captured on Windows.
+        # Candidate artifact validation remains separate and does not rely on this.
+        clean_env["PYTHONIOENCODING"] = "utf-8"
 
         _export_legacy_source(repo_root, legacy_source, clean_env)
         _run(
