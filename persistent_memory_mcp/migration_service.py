@@ -216,6 +216,84 @@ class MigrationService:
         )
         return MigrationPlan(schema_version, tuple(pending), applied)
 
+    def bootstrap_fresh_database(self) -> MigrationPlan:
+        """Record packaged schema history for a newly created, still-empty database.
+
+        This is deliberately different from upgrading an existing database: migration
+        SQL is not replayed because ``sqlite_schema.sql`` already represents the current
+        packaged schema. The operation refuses any database containing user rows or
+        prior version/history state, so an old installation cannot be marked current.
+        """
+        self._validate_database()
+        connection = sqlite3.connect(self.database_path)
+        try:
+            schema_version = int(connection.execute("pragma user_version").fetchone()[0])
+            if schema_version != 0:
+                raise MigrationCompatibilityError(
+                    "fresh database bootstrap requires PRAGMA user_version = 0"
+                )
+
+            tables = [
+                str(row[0])
+                for row in connection.execute(
+                    "select name from sqlite_master "
+                    "where type='table' and name not like 'sqlite_%' order by name"
+                ).fetchall()
+            ]
+            non_empty: list[str] = []
+            for table in tables:
+                if table == "schema_migrations":
+                    continue
+                quoted = table.replace('"', '""')
+                row = connection.execute(
+                    f'SELECT 1 FROM "{quoted}" LIMIT 1'
+                ).fetchone()
+                if row is not None:
+                    non_empty.append(table)
+            if non_empty:
+                raise MigrationCompatibilityError(
+                    "fresh database bootstrap refused because data already exists in: "
+                    + ", ".join(non_empty)
+                )
+
+            tracking_exists = "schema_migrations" in tables
+            if tracking_exists:
+                history = connection.execute(
+                    "select version, name, checksum from schema_migrations order by version"
+                ).fetchall()
+                if history:
+                    raise MigrationCompatibilityError(
+                        "fresh database bootstrap refused because migration history already exists"
+                    )
+            else:
+                connection.execute(
+                    "create table schema_migrations ("
+                    "version integer primary key, "
+                    "name text not null, "
+                    "checksum text not null, "
+                    "applied_at text not null)"
+                )
+
+            applied_at = datetime.now(UTC).isoformat()
+            for migration in self.migrations:
+                connection.execute(
+                    "insert into schema_migrations "
+                    "(version, name, checksum, applied_at) values (?, ?, ?, ?)",
+                    (migration.version, migration.name, migration.checksum, applied_at),
+                )
+            connection.execute(f"pragma user_version = {self.migrations[-1].version}")
+            connection.commit()
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise MigrationExecutionError("fresh SQLite schema bootstrap failed") from exc
+        finally:
+            connection.close()
+
+        plan = self.plan()
+        if plan.pending:
+            raise MigrationExecutionError("fresh SQLite schema bootstrap left pending migrations")
+        return plan
+
     def apply(self, backup_directory: str | Path) -> dict[str, object]:
         """Apply all pending migrations after a verified pre-migration backup."""
         plan = self.plan()
