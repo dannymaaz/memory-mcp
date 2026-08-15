@@ -1,4 +1,4 @@
-"""Validate a built Persistent Memory MCP wheel outside the source checkout."""
+"""Validate built Persistent Memory MCP release artifacts outside the source checkout."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import venv
 import zipfile
@@ -46,11 +47,15 @@ def _venv_entrypoint(root: Path) -> Path:
     return root / "bin" / "memory-mcp"
 
 
-def validate(dist_dir: Path) -> None:
-    wheels = sorted(dist_dir.resolve().glob("persistent_memory_mcp-*.whl"))
-    if len(wheels) != 1:
-        raise RuntimeError(f"Expected exactly one wheel, found {len(wheels)} in {dist_dir}")
+def _validate_archive_assets(dist_dir: Path) -> Path:
+    wheels = sorted(dist_dir.glob("persistent_memory_mcp-*.whl"))
+    sdists = sorted(dist_dir.glob("persistent_memory_mcp-*.tar.gz"))
+    if len(wheels) != 1 or len(sdists) != 1:
+        raise RuntimeError(
+            f"Expected one wheel and one sdist, found wheels={len(wheels)} sdists={len(sdists)}"
+        )
     wheel = wheels[0]
+    sdist = sdists[0]
 
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
@@ -62,6 +67,25 @@ def validate(dist_dir: Path) -> None:
         missing = sorted(required_assets - names)
         if missing:
             raise RuntimeError(f"Wheel is missing required package assets: {missing}")
+
+    with tarfile.open(sdist, mode="r:gz") as archive:
+        names = tuple(archive.getnames())
+        required_suffixes = (
+            "/persistent_memory_mcp/sqlite_schema.sql",
+            "/persistent_memory_mcp/runtime.py",
+            "/pyproject.toml",
+            "/README.md",
+        )
+        missing = [suffix for suffix in required_suffixes if not any(name.endswith(suffix) for name in names)]
+        if missing:
+            raise RuntimeError(f"Sdist is missing required package assets: {missing}")
+
+    return wheel
+
+
+def validate(dist_dir: Path) -> None:
+    dist_dir = dist_dir.resolve()
+    wheel = _validate_archive_assets(dist_dir)
 
     with tempfile.TemporaryDirectory(prefix="memory-mcp-artifact-") as temp_name:
         root = Path(temp_name).resolve()
