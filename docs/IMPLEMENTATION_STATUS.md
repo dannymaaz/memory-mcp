@@ -1,14 +1,14 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for the post-v0.3 Context Compiler phase and PR #60. Persistent Memory MCP remains a local-first, personal and localhost-only product.
+Last reconciled for the post-v0.3 Context Compiler phase and PR #62. Persistent Memory MCP remains a local-first, personal and localhost-only product.
 
 ## Executive summary
 
 The local data-safety foundation is mature: private SQLite storage, owner/project isolation, WAL-safe backup, SHA-256 manifests, read-only health diagnostics, confirmed restore with rollback, versioned backup-first migrations, explicit upgrade tooling, deterministic SQLite connection lifecycle, validated Settings and cross-platform release-artifact testing.
 
-The active engineering phase is no longer basic persistence or recovery. The next product problem is **context delivery quality**: turning durable project memory and repository evidence into a bounded, versioned, provenance-aware packet that an MCP client can use without loading unrelated history.
+The first post-v0.3 Context Compiler milestone is complete. PR #60 established Context Packet v1, model-aware/local token accounting and a hard serialized output budget without breaking existing `build_context()` callers.
 
-PR #60 implements the first mandatory step from the new Notion roadmap: Context Packet v1 plus model-aware token accounting. It is deliberately additive over the existing `build_context()` engine so legacy callers keep their behavior while the real optimizer/model-routing path gains a verifiable packet contract.
+PR #62 implements the second mandatory milestone: **progressive repository retrieval**. Instead of opening the repository broadly, the MCP path maps supported files first, ranks a bounded candidate set, parses symbols only from those candidate files, expands bounded graph neighbors and finally reads exact line fragments with cryptographic/Git provenance. The same token-accounting contract used by Context Packet measures the final retrieval payload.
 
 ## Current capability matrix
 
@@ -21,92 +21,136 @@ PR #60 implements the first mandatory step from the new Notion roadmap: Context 
 | Confirmed restore | Complete foundation | Two-phase plan/execute, safety backup, rollback | Dashboard integration only |
 | Installed upgrade lifecycle | Complete | v0.2.0 → v0.3.0 package regression | Future release migrations |
 | Runtime Settings | Complete foundation | validated SQLite-first configuration | Specialized provider settings remain incremental |
-| Context ranking/filtering | Complete foundation | intent-aware selection, expiry/trust filtering, compression | Now being wrapped by Context Packet v1 |
-| Context Packet v1 | **In review** | Issue #56 / PR #60 | Full exact-head CI + merge |
-| Model-aware token accounting | **In review** | optional tiktoken reference + deterministic fallback | Full exact-head CI + merge |
-| Progressive repository retrieval | Planned | post-v0.3 roadmap Step 2 | Not started until packet contract merges |
-| Git verification | Complete foundation | repository/branch/commit/file verification | Richer revision binding |
-| Code intelligence | Partial | symbol extraction + bounded impact graphs | Persistent symbol evolution across revisions |
+| Context ranking/filtering | Complete foundation | intent-aware selection, expiry/trust filtering, compression | Quality guardrails remain planned |
+| Context Packet v1 | **Complete foundation** | PR #60 / Quality #226 | Extend as later evidence types require |
+| Model-aware token accounting | **Complete foundation** | deterministic fallback + optional tiktoken reference | Broader benchmark corpus later |
+| Progressive repository retrieval | **In review** | Issue #61 / PR #62 | Exact final-head CI + merge |
+| Git verification | Complete foundation | repository/branch/commit/file verification | Persistent revision-aware symbol history |
+| Code intelligence | Partial | Python/TS/JS/SQL symbol extraction + bounded graph | Persistent symbol evolution across revisions |
 | Automatic continuation | Partial | sessions/checkpoints/handoff | project resolution + automatic milestone capture |
 | Hybrid search/embeddings | Complete foundation | semantic + lexical fallback | broader quality/cost benchmarks |
 | Evaluation/provenance suite | Complete foundation | existing agent regressions | context-quality golden scenarios planned |
 | Dashboard/Galaxy | Partial foundation | localhost operational views + bounded graph | operational project map is roadmap Step 5 |
 | Teams / remote collaboration | Out of scope | explicit product decision | no implementation planned |
 
-## Context Packet v1 contract — PR #60
+## Context Packet v1 — complete foundation
 
-The new compiler exposes a stable packet through the same interface path used by `load_unified_context` rather than only as a standalone helper.
+PR #60 exposes a versioned packet through the real `ContextOptimizer → ModelRouter` delivery path.
 
-A packet includes:
+The packet includes:
 
 - contract version (`1.0`);
 - current objective/intent;
-- next safe action when an explicit checkpoint/session/task provides one;
-- compact provenance sources;
-- verification status derived from selected evidence;
+- next safe action when explicitly available;
+- compact provenance and verification state;
 - hard token budget and final serialized token count;
-- tokenizer identity and model when known;
-- exact-vs-estimated mode;
+- tokenizer/model identity and exact-vs-estimated mode;
 - selected, dropped, compressed and token-cost metrics per context block.
 
-### Compatibility
+Compatibility guarantees:
 
-- `build_context()` keeps the historical contract used by existing callers.
-- `ContextOptimizer.optimize_for_interface()` compiles the versioned packet for the real delivery path.
-- `ModelRouter` refreshes token accounting after adding final delivery/model annotations so the packet does not report a stale pre-routing count.
-- Existing 256-token requests use a compact control profile that preserves mandatory packet fields while removing redundant diagnostic metadata.
-- Small-budget routing still fails closed if required control/project data cannot fit the requested hard budget.
+- `build_context()` keeps its historical caller contract;
+- 256-token requests remain supported with compact control metadata;
+- the active counter measures the complete serialized response after final routing annotations;
+- unknown model/tokenizer mappings can fall back locally without a provider network call.
 
-## Token-accounting design
+Validated fallback measurements against `gpt-4o` / `tiktoken:o200k_base`:
 
-Core installations do not require a provider tokenizer.
+| Fixture | Reference | Deterministic fallback | Error |
+|---|---:|---:|---:|
+| Spanish prose | 69 | 80 | **15.94%** |
+| Python/source code | 138 | 140 | **1.45%** |
 
-### Deterministic local fallback
+Quality #226 passed the complete Ubuntu/Windows/macOS × Python 3.11–3.13 matrix, reference-tokenizer jobs, release artifacts and dependency audit.
 
-`deterministic-heuristic-v2` is provider-free and deterministic:
+## Progressive repository retrieval — PR #62
 
-- natural prose uses a stable character-class heuristic;
-- code/JSON/short payloads remain on a conservative character estimator;
-- the legacy identifier `deterministic-char4-v1` remains accepted as a compatibility alias;
-- unknown model mappings under `tokenizer="auto"` fall back locally instead of requiring a network service.
+### Real runtime integration
 
-### Optional exact reference
+`persistent_memory_mcp.runtime` installs `retrieve_repository_context` after Git verification and existing code intelligence. It therefore runs through the normal MCP server rather than being an offline helper.
 
-The optional package extra is:
+### Progressive stages
 
-```bash
-pip install "persistent-memory-mcp[tokenizers]"
-```
+1. **Repository map:** `git ls-files --cached --others --exclude-standard` identifies supported, non-ignored paths without loading all file contents into Python.
+2. **Candidate files:** deterministic ranking combines path/name/language evidence with bounded local `git grep` content signals.
+3. **Symbols:** only candidate files are parsed, reusing existing Python and regex-based TypeScript/JavaScript/SQL code-intelligence parsers.
+4. **Graph neighbors:** known code edges expand only to configured depth/count limits.
+5. **Fragments:** only selected symbols cause source-file reads; emitted evidence is a bounded line range instead of a whole-file dump.
 
-It uses local `tiktoken` counting when the requested model/encoding can be resolved. It is not a core dependency and is used in CI as a reference measurement for the deterministic fallback.
+### Provenance
 
-### Reproducible measurement evidence
+Every emitted fragment contains:
 
-PR #60 adds `scripts/evaluate_tokenization.py` and fixed Spanish/source-code fixtures.
+- repository-relative path;
+- symbol identifier/name/kind;
+- start and end line;
+- emitted-content SHA-256;
+- whole-file SHA-256;
+- repository Git commit;
+- branch/ref;
+- dirty-working-tree state.
 
-Current exact-head measurements against `gpt-4o` / `tiktoken:o200k_base`:
+### Safety and isolation
 
-| Fixture | Reference | Deterministic fallback | Absolute error | Error |
-|---|---:|---:|---:|---:|
-| Spanish prose | 69 | 80 | 11 | **15.94%** |
-| Python/source code | 138 | 140 | 2 | **1.45%** |
+- absolute and traversal paths are rejected;
+- resolved paths must remain below the verified repository root;
+- missing/deleted candidates are skipped safely;
+- `RuntimeSettings.ignore_patterns` and existing code-intelligence exclusions are enforced;
+- recognized secrets are redacted from emitted fragments;
+- repository code is read but never executed;
+- files larger than the configured per-file cap are not parsed/read as fragments;
+- total fragment bytes, files, symbols, neighbors, lines, pages and tokens are explicitly bounded.
 
-Configured guardrail: worst fixture error must be **≤ 40%**. Current worst measured error is **15.94%**.
+### Deterministic pagination
 
-The dedicated packet/tokenizer regression suite currently contains 14 tests and validates the same contract with the optional reference tokenizer on Ubuntu, Windows and macOS.
+The cursor contains only a bounded version/offset/fingerprint payload. Its fingerprint is derived from:
 
-## Context budget semantics
+- Git commit;
+- normalized query;
+- ranked candidate paths;
+- SHA-256 of ranked candidate files.
 
-For normal budgets, Context Packet reserves an explicit safety margin and retains richer diagnostics. For budgets at or below 512 tokens, it switches to a compact metadata representation while preserving:
+This means a cursor is rejected after a new relevant commit **or a relevant uncommitted candidate-file change**. It cannot silently continue against changed evidence.
 
-- version;
-- objective;
-- sources;
-- verification status;
-- budget/count/tokenizer;
-- per-block selection/drop/compression/token metrics.
+### Token-budget integration
 
-The active token counter measures the **final serialized packet**, not only the selected memory items. Low-ranked removable content is dropped until the packet fits. Required control/project metadata is never silently discarded; if it cannot fit, compilation fails instead of returning a misleading count.
+Progressive retrieval calls the same `resolve_token_counter()` / `measure_tokens()` contract used by Context Packet. The final serialized retrieval result is measured, and lower-priority payload sections are trimmed if necessary. If mandatory retrieval-control metadata alone cannot fit, the operation fails closed.
+
+### Reproducible evaluation
+
+`scripts/evaluate_repository_retrieval.py` creates an 80-file deterministic repository and asks for one exact symbol.
+
+Current PR #62 evidence:
+
+| Metric | Result |
+|---|---:|
+| Supported files mapped | **80** |
+| Candidate files parsed | **6** |
+| Parse fraction | **7.5%** |
+| Selected fragments | **2** |
+| Fragment bytes emitted | **284 B** |
+| Target file lines | **125** |
+| Target fragment lines | **7** |
+| Target fragment/file ratio | **5.6%** |
+| Final retrieval tokens | **1,305 / 1,400** |
+
+The intended `services/security.py` file is both the top file candidate and source of the target fragment. The evaluation is wired into the Ubuntu/Windows/macOS reference jobs.
+
+### Regression coverage
+
+PR #62 covers:
+
+- Python exact-symbol fragments and secret redaction;
+- TypeScript function retrieval;
+- JavaScript function retrieval;
+- SQL table retrieval;
+- bounded scanning in a repository with many unrelated files;
+- exact symbol discovery even when the filename does not contain the symbol name;
+- committed-state cursor invalidation;
+- dirty-working-tree cursor invalidation without a commit;
+- traversal/root-escape rejection;
+- invalid limit rejection;
+- total byte and final token budgets.
 
 ## Existing local data-safety contracts
 
@@ -162,29 +206,32 @@ Not planned:
 - team memberships or role hierarchies;
 - public remote collaborative dashboards;
 - billing/organization administration;
-- automatic code execution from stored memory.
+- automatic code execution from stored memory or repository retrieval.
 
 ## Post-v0.3 completion sequence
 
-1. **Context Packet + token accounting** — PR #60, in review.
-2. **Progressive repository retrieval** — planned next after PR #60 merges.
-3. **Persistent code provenance/symbol evolution** — planned.
-4. **Context-quality regression guardrails** — planned.
-5. **Operational project map / Galaxy** — planned after the evidence layers above exist.
+1. ✅ **Context Packet + token accounting** — PR #60 / MEM-36 complete.
+2. 🟡 **Progressive repository retrieval** — PR #62 / MEM-37 in review.
+3. ⬜ **Persistent code provenance/symbol evolution** — next after PR #62.
+4. ⬜ **Context-quality regression guardrails**.
+5. ⬜ **Operational project map / Galaxy** after the evidence layers above exist.
 
-## Definition of done for PR #60 / MEM-36
+## Definition of done for PR #62 / MEM-37
 
-- [x] Versioned Context Packet contract implemented.
-- [x] Real optimizer/model-routing path exposes and finalizes the packet.
-- [x] Deterministic provider-free tokenizer fallback implemented.
-- [x] Optional model-aware reference tokenizer supported.
-- [x] Spanish and source-code fixtures added.
-- [x] Reproducible exact-vs-fallback metrics generated in CI.
-- [x] Per-block selected/dropped/compressed/token metrics implemented.
-- [x] 256-token compatibility represented through compact packet metadata.
-- [x] Dedicated packet/tokenizer tests pass on the current Ubuntu reference job.
-- [ ] Exact final PR head passes the full Ubuntu/Windows/macOS Quality matrix and artifact validation.
-- [ ] PR #60 merged.
-- [ ] MEM-36 marked complete in Notion.
+- [x] Real MCP runtime tool implemented.
+- [x] Map → file → symbol → fragment retrieval is progressive and bounded.
+- [x] Existing Python/TypeScript/JavaScript/SQL parsers are reused rather than duplicated.
+- [x] Path traversal/root escape/ignore-policy controls implemented.
+- [x] Fragment path/lines/content hash/file hash/commit/ref provenance implemented.
+- [x] Secret redaction applied to emitted fragments.
+- [x] Deterministic ordering and bounded cursor pagination implemented.
+- [x] Cursor detects committed and relevant uncommitted candidate changes.
+- [x] Context Packet token-counter contract measures the final retrieval payload.
+- [x] Reproducible 80-file retrieval evaluation added to CI.
+- [x] Python/TS/JS/SQL, symbol-only, traversal, cursor and byte/token boundary regressions added.
+- [x] README, ROADMAP, IMPLEMENTATION_STATUS and Notion synchronized in the branch.
+- [ ] Exact final PR head passes the complete Ubuntu/Windows/macOS Quality matrix and artifact validation.
+- [ ] PR #62 merged.
+- [ ] MEM-37 marked complete in Notion.
 
-The next implementation task must not begin before the final PR #60 gate is closed, because progressive retrieval is required to consume the stable packet/token-budget contract rather than invent another parallel accounting path.
+Step 3 must not begin until this final gate is closed: persistent symbol evolution should build on the stable fragment/provenance contract rather than introduce another repository evidence path.

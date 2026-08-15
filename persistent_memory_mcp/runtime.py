@@ -16,6 +16,7 @@ from .embedding_lifecycle import install_embedding_lifecycle
 from .evaluation_integration import install_agent_evaluation
 from .git_verification import install_git_verification
 from .migration_service import MigrationService
+from .repository_retrieval import install_progressive_retrieval
 from .restore_integration import install_verified_restore
 from .security_integration import install_security_boundaries
 from .server_integration import install_hybrid_search
@@ -66,6 +67,7 @@ def command_serve(_args: argparse.Namespace) -> int:
     install_verified_restore(server_module, settings)
     install_git_verification(server_module)
     install_code_intelligence(server_module)
+    install_progressive_retrieval(server_module, settings)
     install_session_lifecycle(server_module)
     server_module.main()
     return 0
