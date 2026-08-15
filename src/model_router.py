@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from persistent_memory_mcp.context_packet import COMPACT_METADATA_BUDGET
 from persistent_memory_mcp.tokenization import measure_tokens, resolve_token_counter
 
 
@@ -66,16 +67,32 @@ class ModelRouter:
                 model=str(model) if model else None,
                 tokenizer=tokenizer_name,
             )
+
+        compact = "estimated_count" not in tokens
         previous: tuple[int, int] | None = None
         for _ in range(8):
             measurement = measure_tokens(payload, counter)
             signature = (measurement.count, measurement.estimated_count)
-            tokens.update(measurement.as_dict())
+            if compact:
+                tokens["count"] = measurement.count
+                tokens["tokenizer"] = measurement.tokenizer
+                tokens["mode"] = "exact" if measurement.exact else "estimated"
+                if measurement.model:
+                    tokens["model"] = measurement.model
+            else:
+                tokens.update(measurement.as_dict())
             if signature == previous:
                 break
             previous = signature
         final = measure_tokens(payload, counter)
-        tokens.update(final.as_dict())
+        if compact:
+            tokens["count"] = final.count
+            tokens["tokenizer"] = final.tokenizer
+            tokens["mode"] = "exact" if final.exact else "estimated"
+            if final.model:
+                tokens["model"] = final.model
+        else:
+            tokens.update(final.as_dict())
         budget = int(tokens.get("budget") or 0)
         if budget and final.count > budget:
             raise ValueError(
@@ -93,11 +110,20 @@ class ModelRouter:
         ratio = 0 if limit == 0 else min(1.0, estimated_tokens / limit)
         optimized = dict(context)
         optimized["model"] = model_name
-        optimized["delivery_profile"] = {
-            "style": self.MODEL_STRENGTHS.get(model_name, {}).get("style", "balanced"),
-            "estimated_tokens": estimated_tokens,
-            "limit": limit,
-            "compression_level": "high" if ratio > 0.8 else "low",
-        }
+        packet = optimized.get("context_packet")
+        packet_tokens = packet.get("tokens") if isinstance(packet, dict) else None
+        packet_budget = (
+            int(packet_tokens.get("budget") or 0) if isinstance(packet_tokens, dict) else 0
+        )
+        style = self.MODEL_STRENGTHS.get(model_name, {}).get("style", "balanced")
+        if packet_budget and packet_budget <= COMPACT_METADATA_BUDGET:
+            optimized["delivery_profile"] = {"style": style}
+        else:
+            optimized["delivery_profile"] = {
+                "style": style,
+                "estimated_tokens": estimated_tokens,
+                "limit": limit,
+                "compression_level": "high" if ratio > 0.8 else "low",
+            }
         self._refresh_context_packet(optimized)
         return optimized
