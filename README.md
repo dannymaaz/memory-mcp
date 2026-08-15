@@ -7,10 +7,12 @@
 <p align="center">
   <a href="https://dannymaaz.github.io/memory-mcp/">Documentation</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#upgrading-from-020">Upgrade from 0.2.0</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
+![Version](https://img.shields.io/badge/version-0.3.0-0A7D73)
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-compatible-6C5CE7)
@@ -40,7 +42,8 @@ The intended product is personal and local-first: one local installation, one pr
 | SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
 | Health diagnostics | Check SQLite integrity and maintenance readiness without mutating data |
 | Confirmed local restore | Preview and explicitly confirm verified SQLite restores with a safety backup and rollback |
-| Versioned SQLite migrations | Upgrade local schema state with checksums, backup-first transactions and v0.2 data-preservation tests |
+| Versioned SQLite migrations | Upgrade local schema state with checksums, backup-first transactions and explicit user confirmation |
+| Safe upgrade guard | Refuse MCP startup on a stale existing schema instead of silently automigrating |
 | Private local dashboard | Inspect project memory without exposing it remotely |
 
 ## Quick start
@@ -69,6 +72,8 @@ memory-mcp init
 
 The setup command creates a private configuration, initializes the local SQLite database and generates an MCP configuration block for supported clients. The default local database is `~/.memory-mcp/memory.db`.
 
+A genuinely new v0.3.0 SQLite database is initialized directly at the current packaged schema version and migration history. Existing databases are never marked current automatically.
+
 Supabase and PostgreSQL remain available for advanced self-managed storage, but their drivers are optional extras rather than core dependencies:
 
 ```bash
@@ -76,7 +81,7 @@ pip install "persistent-memory-mcp[supabase]"
 pip install "persistent-memory-mcp[postgresql]"
 ```
 
-The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13. Release CI builds the wheel and sdist, runs `twine check`, installs the wheel in a clean environment outside the source checkout and smoke-tests `init`, `doctor`, `status` and `health` on all three operating systems.
+The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13. Release CI builds the wheel and sdist, runs `twine check`, validates version metadata and SHA-256 checksums, installs the wheel in a clean environment and replays a real installed 0.2.0 → candidate upgrade on all three operating systems.
 
 ### 3. Diagnose the installation
 
@@ -118,6 +123,30 @@ memory-mcp health --backup-dir ~/.memory-mcp/backups
 ```
 
 The command starts over stdio automatically when your MCP client launches it. You can also run it manually with `memory-mcp serve`.
+
+## Upgrading from 0.2.0
+
+Version 0.3.0 introduces explicit versioned SQLite migrations. Existing databases are **not** migrated on startup.
+
+After installing 0.3.0, first preview the migration:
+
+```bash
+memory-mcp-migrate --env ~/.memory-mcp/.env
+```
+
+If the preview is expected, apply it explicitly:
+
+```bash
+memory-mcp-migrate --env ~/.memory-mcp/.env --apply --yes
+```
+
+The apply step creates a verified pre-migration backup before mutation. Keep the backup and its JSON manifest until the upgraded installation is verified.
+
+If an existing SQLite database still has pending migrations, `memory-mcp serve` fails closed and tells you to run the preview/apply workflow; it never automigrates.
+
+The release regression installs the pinned historical 0.2.0 package, creates real project/task data, installs the 0.3.0 candidate, confirms the startup guard rejects the stale schema, applies the explicit backup-first migration and verifies that the original data survives on Ubuntu, Windows and macOS.
+
+See [docs/UPGRADING.md](docs/UPGRADING.md) for the full upgrade and rollback procedure.
 
 ## Natural-language examples
 
@@ -165,7 +194,9 @@ The server detects repository context, resolves or creates the current project, 
 | `plan_memory_restore` | Preview a verified restore and issue a short-lived confirmation tied to the exact plan |
 | `execute_memory_restore` | Restore only the unchanged confirmed plan after creating a verified safety backup |
 
-Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Backup, health, confirmed restore and versioned migration services now form the v0.3 local data-safety foundation.
+Operational CLI commands include `memory-mcp init`, `doctor`, `status`, `health`, `serve` and the explicit `memory-mcp-migrate` upgrade command.
+
+Advanced MCP tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Backup, health, confirmed restore and versioned migration services form the v0.3 local data-safety foundation.
 
 ## Confirmed deletion safety model
 
@@ -188,9 +219,13 @@ PR #43 introduced verified two-phase restore. A restore preview verifies the bac
 
 PR #46 hardened restore across Windows and macOS. Logical database drift is detected using a consistent WAL-aware SQLite snapshot fingerprint instead of relying on filesystem `mtime`/size changes. WAL/SHM cleanup tolerates only bounded transient handle-release delays and still fails closed when a persistent lock remains.
 
-PR #45 adds versioned checksum-verified SQLite migrations. Planning is read-only, migration history is validated before writes, pending migrations create a verified pre-migration backup, and each migration runs transactionally and is recorded only after success. The regression suite upgrades the v0.2-shaped schema while proving existing task data is preserved.
+PR #45 added the versioned checksum-verified migration engine. PR #51 integrated it into the installed product with `memory-mcp-migrate`, a read-only startup guard and real package-upgrade validation. Planning is read-only, pending migrations create a verified pre-migration backup, and each migration runs transactionally and is recorded only after success.
 
-PR #41 validates the actual built wheel and sdist on Ubuntu, Windows and macOS. That clean-install validation also caught and fixed a Windows redirected-console encoding bug by replacing Unicode status glyphs with portable ASCII markers such as `[ok]`, `[error]` and `[skip]`.
+PR #47 introduced validated immutable `RuntimeSettings`, with SQLite as the Settings default, `MEMORY_BACKEND` as the canonical backend variable, controlled deprecation of the historical alias and fail-closed conflicting aliases.
+
+PR #52 makes context-managed SQLite connections close deterministically after native commit/rollback semantics, removing reliance on garbage collection for WAL/SHM handle release.
+
+PR #41 validates actual built wheel/sdist installation. The v0.3 release gate additionally validates package version metadata, SHA-256 manifests and the installed historical 0.2.0 upgrade lifecycle.
 
 ## Privacy and security
 
@@ -202,7 +237,8 @@ PR #41 validates the actual built wheel and sdist on Ubuntu, Windows and macOS. 
 - Backup manifests contain structural verification metadata, not memory values.
 - Health diagnostics are read-only and expose bounded structural state rather than memory contents.
 - Restore creates a verified safety backup before replacing the active database and can automatically roll back after failed validation.
-- Pending migrations require a verified pre-migration backup and use transactional execution.
+- Existing pending migrations require explicit preview/apply and a verified pre-migration backup; startup never automigrates.
+- Context-managed SQLite connections are closed deterministically after commit/rollback.
 - Keep local configuration and confirmation secrets private.
 
 ## Product scope
@@ -226,18 +262,25 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] Versioned SHA-256 backup manifests and tamper detection
 - [x] SQLite health and maintenance-readiness diagnostics
 - [x] Confirmed two-phase SQLite restore with safety backup and rollback
-- [x] Versioned checksum-verified SQLite migrations with v0.2 data-preservation regression
+- [x] Versioned checksum-verified SQLite migrations
+- [x] Explicit migration CLI and fail-closed startup guard
+- [x] Real installed-package upgrade validation from 0.2.0 on Ubuntu, Windows and macOS
+- [x] Centralized validated Settings foundation and safe legacy backend alias transition
+- [x] Deterministic context-managed SQLite connection close semantics
 - [x] SQLite-first core packaging with optional remote database extras
 - [x] Ubuntu, Windows and macOS CI across Python 3.11–3.13
 - [x] Wheel/sdist build, metadata check and clean-install validation on all three operating systems
-- [ ] Complete centralized Settings and legacy backend-alias deprecation
-- [ ] Released-package upgrade/uninstall/rollback validation from 0.2.0
+- [x] v0.3.0 release notes and rollback documentation prepared
+- [ ] Publish v0.3.0 GitHub Release and PyPI artifacts after final candidate validation
+- [ ] MCP Registry release
 - [ ] Dashboard pagination and operational summary cards
 - [ ] Complete automatic continuation checkpoints
-- [ ] Final release publication and rollback documentation
-- [ ] MCP Registry release
 
-## Documentation
+## Release documentation
+
+- [Changelog](CHANGELOG.md)
+- [Upgrade and rollback](docs/UPGRADING.md)
+- [Release operator checklist](docs/RELEASING.md)
 
 Public documentation covers installation, client configuration, architecture, data model, API reference, troubleshooting and English/Spanish guidance.
 
