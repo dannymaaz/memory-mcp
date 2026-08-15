@@ -31,29 +31,32 @@ def _configured_backend() -> str:
     return _configured_settings().backend
 
 
-def get_supabase_client() -> Any:
-    """Create the configured storage client.
+def get_supabase_client(settings: RuntimeSettings | None = None) -> Any:
+    """Create a storage client from one validated settings object.
 
     The historical function name is preserved for compatibility with the existing
-    service layer. SQLite is the default and returns a local facade exposing the
-    subset of the Supabase query API used by ``src.server``. Remote backends remain
-    opt-in and require their optional dependencies and credentials.
+    service layer. Callers may inject ``RuntimeSettings`` so runtime composition does
+    not need to re-read environment variables. When omitted, settings are resolved
+    once from the current environment for backwards compatibility.
     """
 
-    settings = _configured_settings()
-    if settings.backend == "sqlite":
-        return create_sqlite_client(settings.sqlite_path)
+    active_settings = settings or _configured_settings()
+    if active_settings.backend == "sqlite":
+        return create_sqlite_client(active_settings.sqlite_path)
 
-    if settings.backend == "postgresql":
-        if settings.database_url is None:
+    if active_settings.backend == "postgresql":
+        if active_settings.database_url is None:
             raise EnvironmentError("DATABASE_URL must be configured for postgresql backend")
         # The historical helper still returns the Supabase-compatible query facade.
         # Direct PostgreSQL storage is configured elsewhere; do not silently reinterpret
         # DATABASE_URL as Supabase credentials here.
 
-    if not settings.supabase_url or settings.supabase_key is None:
+    if not active_settings.supabase_url or active_settings.supabase_key is None:
         raise EnvironmentError("SUPABASE_URL and SUPABASE_KEY must be configured")
-    return create_client(settings.supabase_url, settings.supabase_key.get_secret_value())
+    return create_client(
+        active_settings.supabase_url,
+        active_settings.supabase_key.get_secret_value(),
+    )
 
 
 def set_owner_context(client: Any, owner_id: str) -> Any:
