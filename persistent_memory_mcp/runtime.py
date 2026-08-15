@@ -22,6 +22,7 @@ from .security_integration import install_security_boundaries
 from .server_integration import install_hybrid_search
 from .session_lifecycle import install_session_lifecycle
 from .settings import RuntimeSettings
+from .symbol_evolution import install_symbol_evolution
 
 
 def _assert_migration_ready(settings: RuntimeSettings) -> None:
@@ -68,6 +69,7 @@ def command_serve(_args: argparse.Namespace) -> int:
     install_git_verification(server_module)
     install_code_intelligence(server_module)
     install_progressive_retrieval(server_module, settings)
+    install_symbol_evolution(server_module, settings)
     install_session_lifecycle(server_module)
     server_module.main()
     return 0
