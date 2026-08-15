@@ -8,8 +8,10 @@ from .errors import (
     BackupManifestError,
     BackupSourceError,
     BackupVerificationError,
+    HealthError,
     MaintenanceError,
 )
+from .health import HealthResult, HealthService
 from .manifest import (
     BackupManifest,
     load_backup_manifest,
@@ -28,6 +30,9 @@ __all__ = [
     "BackupService",
     "BackupSourceError",
     "BackupVerificationError",
+    "HealthError",
+    "HealthResult",
+    "HealthService",
     "MaintenanceError",
     "load_backup_manifest",
     "manifest_path_for",
