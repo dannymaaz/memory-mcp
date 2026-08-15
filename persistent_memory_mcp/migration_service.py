@@ -1,4 +1,4 @@
-"""Backup-first, checksum-verified SQLite migrations."""
+"""Backup-first, checksum-verified SQLite migrations for safe local upgrades."""
 
 from __future__ import annotations
 
