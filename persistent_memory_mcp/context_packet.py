@@ -17,7 +17,7 @@ from persistent_memory_mcp.tokenization import TokenCounter, measure_tokens, res
 
 CONTEXT_PACKET_VERSION = "1.0"
 DEFAULT_SAFETY_MARGIN = 0.08
-MIN_CONTEXT_PACKET_BUDGET = 320
+MIN_CONTEXT_PACKET_BUDGET = 256
 _REMOVABLE_FIELDS = (
     "timeline",
     "sessions",
