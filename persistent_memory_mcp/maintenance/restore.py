@@ -36,6 +36,7 @@ class RestorePlan:
     target_size_bytes: int
     target_schema_version: int
     target_mtime_ns: int
+    target_fingerprint: str
     required_free_bytes: int
     disk_free_bytes: int
     created_at: str
@@ -66,6 +67,7 @@ class RestorePlan:
                 target_size_bytes=int(payload["target_size_bytes"]),
                 target_schema_version=int(payload["target_schema_version"]),
                 target_mtime_ns=int(payload["target_mtime_ns"]),
+                target_fingerprint=str(payload["target_fingerprint"]),
                 required_free_bytes=int(payload["required_free_bytes"]),
                 disk_free_bytes=int(payload["disk_free_bytes"]),
                 created_at=str(payload["created_at"]),
@@ -97,7 +99,9 @@ def create_restore_confirmation_token(plan: RestorePlan, *, secret: str | None =
     expected = _fingerprint(_canonical_plan_payload(plan))
     if not plan.fingerprint or not hmac.compare_digest(plan.fingerprint, expected):
         raise RestorePlanError("restore plan fingerprint is invalid")
-    signature = hmac.new(_confirmation_secret(secret), expected.encode("utf-8"), hashlib.sha256).hexdigest()
+    signature = hmac.new(
+        _confirmation_secret(secret), expected.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
     return f"{expected}.{signature}"
 
 
@@ -172,6 +176,7 @@ class RestoreService:
             )
 
         target_stat = target.stat()
+        target_fingerprint = self._database_fingerprint(target)
         required = manifest.backup_size_bytes + target_stat.st_size + max(
             1024 * 1024, manifest.backup_size_bytes // 10
         )
@@ -198,16 +203,21 @@ class RestoreService:
             "target_size_bytes": target_stat.st_size,
             "target_schema_version": int(target_schema["schema_version"]),
             "target_mtime_ns": target_stat.st_mtime_ns,
+            "target_fingerprint": target_fingerprint,
             "required_free_bytes": required,
             "disk_free_bytes": free,
             "created_at": created_at,
             "expires_at": expires_at,
         }
-        fingerprint = _fingerprint(json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        fingerprint = _fingerprint(
+            json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        )
         plan = RestorePlan(**base, fingerprint=fingerprint)  # type: ignore[arg-type]
         return plan, create_restore_confirmation_token(plan)
 
-    def execute_restore(self, plan: RestorePlan | dict[str, object], confirmation_token: str) -> dict[str, object]:
+    def execute_restore(
+        self, plan: RestorePlan | dict[str, object], confirmation_token: str
+    ) -> dict[str, object]:
         parsed = RestorePlan.from_dict(plan) if isinstance(plan, dict) else plan
         if parsed.fingerprint in _USED_RESTORE_FINGERPRINTS:
             raise RestoreConfirmationError("restore confirmation token has already been used")
@@ -255,6 +265,8 @@ class RestoreService:
         target_stat = target.stat()
         if target_stat.st_size != plan.target_size_bytes or target_stat.st_mtime_ns != plan.target_mtime_ns:
             raise RestorePlanError("active database changed after restore preview", path=target)
+        if not hmac.compare_digest(self._database_fingerprint(target), plan.target_fingerprint):
+            raise RestorePlanError("active database changed after restore preview", path=target)
         manifest = verify_backup_manifest(backup, plan.manifest_path)
         if manifest.sha256 != plan.backup_sha256 or manifest.backup_size_bytes != plan.backup_size_bytes:
             raise RestorePlanError("restore backup changed after preview", path=backup)
@@ -280,6 +292,22 @@ class RestoreService:
             return {"integrity": integrity, "schema_version": schema_version}
         finally:
             connection.close()
+
+    @staticmethod
+    def _database_fingerprint(path: Path) -> str:
+        """Hash a consistent logical SQLite snapshot, including committed WAL state."""
+        source = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        snapshot = sqlite3.connect(":memory:")
+        try:
+            source.backup(snapshot)
+            try:
+                serialized = snapshot.serialize()
+            except AttributeError as exc:  # pragma: no cover - supported Python contract
+                raise RestorePlanError("SQLite serialization is unavailable on this runtime") from exc
+            return hashlib.sha256(serialized).hexdigest()
+        finally:
+            snapshot.close()
+            source.close()
 
     @staticmethod
     def _disk_free(path: Path) -> int:
@@ -327,4 +355,6 @@ class RestoreService:
                 pass
             if isinstance(exc, RestoreExecutionError):
                 raise
-            raise RestoreExecutionError("automatic rollback after restore failure failed", path=target) from exc
+            raise RestoreExecutionError(
+                "automatic rollback after restore failure failed", path=target
+            ) from exc
