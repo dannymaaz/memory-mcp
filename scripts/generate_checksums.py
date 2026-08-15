@@ -7,7 +7,6 @@ import hashlib
 from pathlib import Path
 
 _MANIFEST_NAME = "SHA256SUMS"
-_ALLOWED_SUFFIXES = (".whl", ".tar.gz")
 
 
 def _artifacts(directory: Path) -> list[Path]:
