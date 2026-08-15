@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from persistent_memory_mcp.context_engine import build_context, estimate_tokens
-from persistent_memory_mcp.context_packet import build_context_packet
+from persistent_memory_mcp.context_packet import COMPACT_METADATA_BUDGET, build_context_packet
 from persistent_memory_mcp.project_guardrails import compact_guardrails
 
 
@@ -115,8 +115,6 @@ class ContextOptimizer:
         if metadata:
             optimized["metadata"] = metadata
 
-        # A very small user budget may leave insufficient room for metadata.
-        # Remove lowest-priority selected items until the complete response fits.
         removable_fields = (
             "timeline",
             "sessions",
@@ -205,28 +203,46 @@ class ContextOptimizer:
         )
         original_estimate = estimate_tokens(context)
         saved_tokens = max(0, original_estimate - token_estimate)
-        strategy = {
+        compact_control = limit <= COMPACT_METADATA_BUDGET
+        strategy: dict[str, Any] = {
             "limit": limit,
             "layer": result.layer,
             "intent": resolved_intent,
             "include_untrusted": resolved_untrusted,
-            "focus": (
-                "code"
-                if interface_key in {"opencode", "claude-code", "qwen-code", "codex"}
-                else "reasoning"
-            ),
-            "saved_tokens": saved_tokens,
-            "savings_percent": round(saved_tokens / max(1, original_estimate) * 100, 2),
-            "compressed_items": result.metrics.compressed_items,
-            "guardrails_loaded": guardrails_loaded,
         }
+        if not compact_control:
+            strategy.update(
+                {
+                    "focus": (
+                        "code"
+                        if interface_key in {"opencode", "claude-code", "qwen-code", "codex"}
+                        else "reasoning"
+                    ),
+                    "saved_tokens": saved_tokens,
+                    "savings_percent": round(
+                        saved_tokens / max(1, original_estimate) * 100,
+                        2,
+                    ),
+                    "compressed_items": result.metrics.compressed_items,
+                    "guardrails_loaded": guardrails_loaded,
+                }
+            )
         fixed_fields: dict[str, Any] = {
             "interface": interface_key,
             "token_estimate": token_estimate,
             "strategy": strategy,
         }
         if metadata:
-            fixed_fields["metadata"] = metadata
+            if compact_control:
+                compact_metadata = {
+                    key: metadata[key]
+                    for key in ("recommended_model", "project_id", "workspace_id")
+                    if key in metadata
+                }
+                if compact_metadata:
+                    fixed_fields["metadata"] = compact_metadata
+            else:
+                fixed_fields["metadata"] = metadata
         model = metadata.get("recommended_model")
         packet_result = build_context_packet(
             self._prepare_context(context),
