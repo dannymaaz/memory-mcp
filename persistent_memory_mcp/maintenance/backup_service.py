@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .errors import BackupDestinationError, BackupError, BackupIntegrityError, BackupSourceError
+from .manifest import manifest_path_for, write_backup_manifest
 
 
 @dataclass(frozen=True)
@@ -17,9 +18,11 @@ class BackupResult:
     """Bounded metadata describing a completed SQLite backup."""
 
     backup_path: Path
+    manifest_path: Path
     created_at: datetime
     source_size_bytes: int
     backup_size_bytes: int
+    sha256: str
     sqlite_version: str
     schema_version: int
     integrity_status: str
@@ -29,9 +32,11 @@ class BackupResult:
         """Return serialization-friendly metadata without stored memory values."""
         return {
             "backup_path": str(self.backup_path),
+            "manifest_path": str(self.manifest_path),
             "created_at": self.created_at.isoformat(),
             "source_size_bytes": self.source_size_bytes,
             "backup_size_bytes": self.backup_size_bytes,
+            "sha256": self.sha256,
             "sqlite_version": self.sqlite_version,
             "schema_version": self.schema_version,
             "integrity_status": self.integrity_status,
@@ -59,6 +64,7 @@ class BackupService:
             ) from exc
 
         temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+        published = False
         try:
             self._copy_database(source, temporary)
             metadata = self._inspect_backup(temporary)
@@ -67,24 +73,42 @@ class BackupService:
                     "Backup destination already exists; overwrite is not allowed.", path=target
                 )
             self._publish_backup(temporary, target)
+            published = True
+            created_at = datetime.now(UTC)
+            manifest = write_backup_manifest(
+                target,
+                created_at=created_at.isoformat(),
+                sqlite_version=str(metadata["sqlite_version"]),
+                schema_version=int(metadata["schema_version"]),
+                integrity_status=str(metadata["integrity_status"]),
+                table_counts=dict(metadata["table_counts"]),
+            )
             return BackupResult(
                 backup_path=target,
-                created_at=datetime.now(UTC),
+                manifest_path=manifest_path_for(target),
+                created_at=created_at,
                 source_size_bytes=source.stat().st_size,
                 backup_size_bytes=target.stat().st_size,
-                sqlite_version=metadata["sqlite_version"],
-                schema_version=metadata["schema_version"],
-                integrity_status=metadata["integrity_status"],
-                table_counts=metadata["table_counts"],
+                sha256=manifest.sha256,
+                sqlite_version=str(metadata["sqlite_version"]),
+                schema_version=int(metadata["schema_version"]),
+                integrity_status=str(metadata["integrity_status"]),
+                table_counts=dict(metadata["table_counts"]),
             )
         except BackupError:
             self._cleanup_temporary(temporary)
+            if published:
+                self._cleanup_published(target)
             raise
         except (OSError, sqlite3.Error) as exc:
             self._cleanup_temporary(temporary)
+            if published:
+                self._cleanup_published(target)
             raise BackupError("SQLite backup creation failed.", path=target) from exc
         except Exception:
             self._cleanup_temporary(temporary)
+            if published:
+                self._cleanup_published(target)
             raise
 
     @staticmethod
@@ -100,6 +124,12 @@ class BackupService:
         if target.exists():
             raise BackupDestinationError(
                 "Backup destination already exists; overwrite is not allowed.", path=target
+            )
+        manifest_path = manifest_path_for(target)
+        if manifest_path.exists():
+            raise BackupDestinationError(
+                "Backup manifest destination already exists; overwrite is not allowed.",
+                path=manifest_path,
             )
 
     @staticmethod
@@ -152,8 +182,6 @@ class BackupService:
                 "Backup destination already exists; overwrite is not allowed.", path=target
             ) from exc
         except OSError:
-            # Hard-link publication is not available on every supported filesystem.
-            # Re-check before the portable atomic rename fallback.
             if target.exists():
                 raise BackupDestinationError(
                     "Backup destination already exists; overwrite is not allowed.", path=target
@@ -168,3 +196,11 @@ class BackupService:
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+    @staticmethod
+    def _cleanup_published(path: Path) -> None:
+        for candidate in (path, manifest_path_for(path)):
+            try:
+                candidate.unlink(missing_ok=True)
+            except OSError:
+                pass
