@@ -39,6 +39,8 @@ The intended product is personal and local-first: one local installation, one pr
 | Verified local backup | Create WAL-safe SQLite backups with integrity validation |
 | SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
 | Health diagnostics | Check SQLite integrity and maintenance readiness without mutating data |
+| Confirmed local restore | Preview and explicitly confirm verified SQLite restores with a safety backup and rollback |
+| Versioned SQLite migrations | Upgrade local schema state with checksums, backup-first transactions and v0.2 data-preservation tests |
 | Private local dashboard | Inspect project memory without exposing it remotely |
 
 ## Quick start
@@ -74,7 +76,7 @@ pip install "persistent-memory-mcp[supabase]"
 pip install "persistent-memory-mcp[postgresql]"
 ```
 
-The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13. Release CI also builds the wheel and sdist, runs `twine check`, installs the wheel in a clean environment outside the source checkout and smoke-tests `init`, `doctor`, `status` and `health` on all three operating systems.
+The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13. Release CI builds the wheel and sdist, runs `twine check`, installs the wheel in a clean environment outside the source checkout and smoke-tests `init`, `doctor`, `status` and `health` on all three operating systems.
 
 ### 3. Diagnose the installation
 
@@ -126,6 +128,8 @@ Show active warnings before changing authentication.
 Search project memory for the database migration decision.
 Preview deletion of these completed task records.
 Execute the unchanged deletion plan with its confirmation token.
+Preview restoring this verified SQLite backup.
+Execute the unchanged restore plan with its confirmation token.
 ```
 
 ## How it works
@@ -157,9 +161,11 @@ The server detects repository context, resolves or creates the current project, 
 | `sync_session_state` | Save the current working state |
 | `export_memory_bundle` | Export memory as JSON or Markdown |
 | `plan_memory_deletion` | Preview exact deletion candidates and issue a short-lived signed token |
-| `execute_memory_deletion` | Execute only the unchanged, scoped and confirmed plan |
+| `execute_memory_deletion` | Execute only the unchanged, scoped and confirmed deletion plan |
+| `plan_memory_restore` | Preview a verified restore and issue a short-lived confirmation tied to the exact plan |
+| `execute_memory_restore` | Restore only the unchanged confirmed plan after creating a verified safety backup |
 
-Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Verified backup and health services are now available as the maintenance foundation while restore and dashboard maintenance controls are completed for v0.3.
+Advanced tools remain available for checkpoints, timelines, retention, prompts, analytics, embeddings, code intelligence and file relationships. Backup, health, confirmed restore and versioned migration services now form the v0.3 local data-safety foundation.
 
 ## Confirmed deletion safety model
 
@@ -170,17 +176,21 @@ Deletion is a two-phase local operation:
 
 Retention cleanup uses the same preview-and-confirm contract. No retention deletion runs automatically at startup. Audit events record operation metadata and counts without copying deleted content.
 
-## Verified backup safety model
+## Backup, restore and migration safety model
 
 PR #29 introduced consistent SQLite backup creation with `sqlite3.Connection.backup()` rather than direct filesystem copies. It supports active WAL mode, refuses accidental overwrite, validates the completed database with `PRAGMA integrity_check` and cleans incomplete temporary output after failures.
 
 PR #35 adds a versioned JSON manifest to every successful backup with a SHA-256 digest, package/SQLite/schema versions, size, integrity result and bounded table counts. Manifest verification rejects changed or malformed backups without placing stored memory values or source database paths in the manifest.
 
-PR #39 adds read-only SQLite health diagnostics so maintenance can verify the active database, structural indexes, foreign keys, storage headroom and available verified backups before later restore or migration operations.
+PR #39 adds read-only SQLite health diagnostics so maintenance can verify the active database, structural indexes, foreign keys, storage headroom and available verified backups before destructive maintenance.
+
+PR #43 introduced verified two-phase restore. A restore preview verifies the backup manifest, SHA-256, SQLite integrity, schema compatibility and disk headroom, then produces a short-lived confirmation bound to the exact plan. Execution creates a fresh verified safety backup before replacement, performs atomic replacement and automatically restores the safety backup if post-restore validation fails.
+
+PR #46 hardened restore across Windows and macOS. Logical database drift is detected using a consistent WAL-aware SQLite snapshot fingerprint instead of relying on filesystem `mtime`/size changes. WAL/SHM cleanup tolerates only bounded transient handle-release delays and still fails closed when a persistent lock remains.
+
+PR #45 adds versioned checksum-verified SQLite migrations. Planning is read-only, migration history is validated before writes, pending migrations create a verified pre-migration backup, and each migration runs transactionally and is recorded only after success. The regression suite upgrades the v0.2-shaped schema while proving existing task data is preserved.
 
 PR #41 validates the actual built wheel and sdist on Ubuntu, Windows and macOS. That clean-install validation also caught and fixed a Windows redirected-console encoding bug by replacing Unicode status glyphs with portable ASCII markers such as `[ok]`, `[error]` and `[skip]`.
-
-Restore remains intentionally unavailable until the v0.3 two-phase restore workflow can validate the selected backup, preview the exact operation, create a fresh safety backup and require explicit confirmation.
 
 ## Privacy and security
 
@@ -191,8 +201,9 @@ Restore remains intentionally unavailable until the v0.3 two-phase restore workf
 - Destructive operations require a short-lived confirmation tied to an exact plan.
 - Backup manifests contain structural verification metadata, not memory values.
 - Health diagnostics are read-only and expose bounded structural state rather than memory contents.
+- Restore creates a verified safety backup before replacing the active database and can automatically roll back after failed validation.
+- Pending migrations require a verified pre-migration backup and use transactional execution.
 - Keep local configuration and confirmation secrets private.
-- Create a verified backup before upgrades, migrations or destructive maintenance.
 
 ## Product scope
 
@@ -201,7 +212,7 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 ## Roadmap
 
 - [x] Persistent project, task, decision and warning memory
-- [x] Git-aware project resolution
+- [x] Git-aware project resolution foundation
 - [x] Cross-client session continuity foundation
 - [x] Semantic search with lexical fallback
 - [x] Import, export, timeline and retention foundations
@@ -214,14 +225,16 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] WAL-safe SQLite backup with integrity validation
 - [x] Versioned SHA-256 backup manifests and tamper detection
 - [x] SQLite health and maintenance-readiness diagnostics
+- [x] Confirmed two-phase SQLite restore with safety backup and rollback
+- [x] Versioned checksum-verified SQLite migrations with v0.2 data-preservation regression
 - [x] SQLite-first core packaging with optional remote database extras
 - [x] Ubuntu, Windows and macOS CI across Python 3.11–3.13
 - [x] Wheel/sdist build, metadata check and clean-install validation on all three operating systems
-- [ ] Confirmed two-phase SQLite restore
-- [ ] Versioned SQLite migrations and 0.2.0 upgrade validation
+- [ ] Complete centralized Settings and legacy backend-alias deprecation
+- [ ] Released-package upgrade/uninstall/rollback validation from 0.2.0
 - [ ] Dashboard pagination and operational summary cards
 - [ ] Complete automatic continuation checkpoints
-- [ ] Final release publication and upgrade/uninstall validation
+- [ ] Final release publication and rollback documentation
 - [ ] MCP Registry release
 
 ## Documentation
