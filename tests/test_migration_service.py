@@ -17,7 +17,7 @@ from persistent_memory_mcp.storage import SQLiteStorage
 
 def _db(path: Path) -> None:
     storage = SQLiteStorage(path)
-    storage.initialize()
+    storage.initialize(bootstrap_migrations=False)
     with storage.connect() as connection:
         workspace_id = connection.execute(
             "insert into workspaces(owner_id, slug, name) "
@@ -184,3 +184,22 @@ def test_migration_cannot_manage_its_own_transaction(tmp_path: Path) -> None:
 
     with pytest.raises(MigrationCompatibilityError, match="must not manage transactions"):
         MigrationService(database, unsafe)
+
+
+def test_fresh_database_bootstrap_marks_packaged_schema_current(tmp_path: Path) -> None:
+    database = tmp_path / "fresh.db"
+    SQLiteStorage(database).initialize(bootstrap_migrations=False)
+
+    plan = MigrationService(database).bootstrap_fresh_database()
+
+    assert plan.schema_version == 1
+    assert plan.pending == ()
+    assert [item["version"] for item in plan.applied] == [1]
+
+
+def test_fresh_database_bootstrap_refuses_existing_user_data(tmp_path: Path) -> None:
+    database = tmp_path / "legacy.db"
+    _db(database)
+
+    with pytest.raises(MigrationCompatibilityError, match="data already exists"):
+        MigrationService(database).bootstrap_fresh_database()
