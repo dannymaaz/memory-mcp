@@ -12,7 +12,7 @@ from src.utils.db import get_supabase_client
 def test_normalize_backend_aliases() -> None:
     assert normalize_backend("local") == "sqlite"
     assert normalize_backend("postgres") == "postgresql"
-    assert normalize_backend(None) == "supabase"
+    assert normalize_backend(None) == "sqlite"
 
 
 def test_sqlite_client_supports_server_query_shape(tmp_path: Path) -> None:
