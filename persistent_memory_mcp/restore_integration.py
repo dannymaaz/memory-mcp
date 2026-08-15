@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Callable
 
 from .maintenance import RestorePlan, RestoreService
@@ -49,9 +50,7 @@ def install_verified_restore(server_module: Any) -> tuple[Callable[..., Any], Ca
         backend = normalize_backend(os.getenv("MEMORY_BACKEND") or "sqlite")
         if backend != "sqlite":
             raise RuntimeError("verified restore currently supports the local SQLite backend only")
-        target = os.getenv("SQLITE_PATH") or str(
-            __import__("pathlib").Path.home() / ".memory-mcp" / "memory.db"
-        )
+        target = os.getenv("SQLITE_PATH") or str(Path.home() / ".memory-mcp" / "memory.db")
         return RestoreService(target)
 
     def plan_memory_restore(
