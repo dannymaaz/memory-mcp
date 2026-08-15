@@ -57,3 +57,9 @@ class BackupVerificationError(BackupError):
     """Raised when a backup no longer matches its verification manifest."""
 
     code = "backup_verification_error"
+
+
+class HealthError(MaintenanceError):
+    """Raised when local database health cannot be assessed safely."""
+
+    code = "health_error"
