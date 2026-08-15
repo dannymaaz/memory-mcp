@@ -31,7 +31,7 @@ jobs:
       - name: Verify package metadata
         run: |
           python -c "import sys; assert sys.version_info >= (3, 11)"
-          python -c "from importlib.metadata import requires; assert requires('persistent-memory-mcp') is not None"
+          python -c "from importlib.metadata import requires, version; assert version('persistent-memory-mcp') == '0.3.0'; assert requires('persistent-memory-mcp') is not None"
       - name: Compile
         run: python -m compileall persistent_memory_mcp src
       - name: Lint
@@ -64,6 +64,12 @@ jobs:
         run: python -m build
       - name: Validate package metadata
         run: python -c "from pathlib import Path; import subprocess, sys; files=[str(p) for p in Path('dist').iterdir()]; subprocess.check_call([sys.executable, '-m', 'twine', 'check', *files])"
+      - name: Validate release version
+        run: python scripts/validate_release_version.py dist
+      - name: Generate and verify SHA-256 checksums
+        run: |
+          python scripts/generate_checksums.py dist
+          python scripts/generate_checksums.py dist --verify
       - name: Validate clean wheel installation
         run: python scripts/validate_release_artifact.py dist
       - name: Validate installed v0.2.0 upgrade path

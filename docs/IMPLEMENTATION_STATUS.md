@@ -1,27 +1,32 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled after merged PR #46 and PR #45. Persistent Memory MCP remains a local-first, personal and localhost-only product.
+Last reconciled after merged PR #52 plus the v0.3.0 release candidate in PR #54. Persistent Memory MCP remains a local-first, personal and localhost-only product.
 
 ## Executive summary
 
-Persistent Memory MCP provides a strong local-first technical foundation for durable project memory: private SQLite storage, safe client installation, token-efficient context construction, owner/project isolation, hybrid search, persisted embeddings, session lifecycle management, Git-grounded verification, code intelligence, duplicate and contradiction analysis, deployment safety, evaluation tooling, a localhost-only dashboard, Galaxy visualization and confirmed destructive operations.
+Persistent Memory MCP now has a release-grade local data-safety foundation: private SQLite storage, owner/project isolation, WAL-safe verified backup, SHA-256 manifests, read-only health diagnostics, confirmed two-phase restore with automatic rollback, versioned backup-first migrations, explicit installed migration tooling, a fail-closed startup migration guard, deterministic SQLite connection lifecycle, validated runtime Settings and cross-platform release-artifact testing.
 
-The v0.3.0 Data Safety and Recovery foundation is now implemented end to end: WAL-safe verified backups (PR #29), versioned SHA-256 manifests (PR #35), read-only SQLite health diagnostics (PR #39), two-phase verified restore with rollback and cross-platform hardening (PR #43 + PR #46), versioned checksum-verified local migrations with a v0.2 data-preservation regression (PR #45), SQLite-first packaging and optional remote extras (PR #30), and real wheel/sdist clean-install validation on Ubuntu, Windows and macOS (PR #41).
+The release lifecycle has also moved beyond schema-only simulation. PR #51 installs the pinned historical 0.2.0 package in a clean environment, creates real project/task data, installs the candidate, verifies startup refuses the pending schema, applies the explicit migration with a verified backup and proves the original data survives on Ubuntu, Windows and macOS. PR #52 revalidates that lifecycle after making context-managed SQLite handles close deterministically.
 
-The remaining release work is no longer basic recovery. The active priorities are centralized Settings/deprecation cleanup (Issue #37 / PR #47), released-package upgrade/uninstall/rollback validation from 0.2.0, and final publication/registry preparation.
+PR #54 is the v0.3.0 release candidate. It bumps package metadata to 0.3.0, adds release notes and backup-first upgrade/rollback instructions, validates 0.3.0 metadata in built artifacts, generates/verifies SHA-256 manifests and adds a non-publishing tag workflow that rebuilds and revalidates the exact tagged commit before retaining the release bundle.
+
+The remaining v0.3.0 work is external publication: finish candidate CI, merge/tag the exact validated commit, validate the tag bundle, then create the GitHub Release and publish the same wheel/sdist to PyPI once secure publication configuration is confirmed. MCP Registry preparation follows stable public release URLs.
 
 ## Capability matrix
 
 | Capability | Status | Evidence | Remaining gap |
 |---|---|---|---|
-| Product CLI and client onboarding | Complete foundation | PR #1, PR #4, PR #39, PR #41 | Released-upgrade/uninstall validation |
+| Product CLI and client onboarding | Complete foundation | PR #1, PR #4, PR #39, PR #41, PR #51 | External v0.3 release publication |
 | Security and isolation | Complete foundation | PR #2, PR #11, PR #20 | Continue adversarial coverage |
-| SQLite local-first storage | Complete | PR #3, PR #45 | Future migrations must continue the new versioned contract |
-| Verified SQLite backup | Complete foundation | PR #29 | Dashboard/CLI backup creation UX may be added later |
-| SHA-256 backup manifests | Complete | PR #35 | May later add stronger signing/rotation policies if needed |
+| SQLite local-first storage | Complete | PR #3, PR #45, PR #51, PR #52 | Future numbered migrations continue the contract |
+| Verified SQLite backup | Complete foundation | PR #29 | Dashboard backup UX may be added later |
+| SHA-256 backup manifests | Complete | PR #35 | Stronger signing/rotation is optional future work |
 | Database health and integrity | Complete foundation | PR #39 | Dashboard health UX and future repair workflows |
-| Confirmed two-phase restore | Complete foundation | PR #43, PR #46 | Dashboard restore UX may consume the existing safety contract later |
-| Versioned SQLite migrations | Complete foundation | PR #45 | Validate released-package upgrade lifecycle, then add future numbered migrations as needed |
+| Confirmed two-phase restore | Complete foundation | PR #43, PR #46 | Dashboard restore UX may consume the safety contract later |
+| Versioned SQLite migrations | Complete | PR #45, PR #51 | Future schema changes add new numbered migrations |
+| Installed v0.2.0 upgrade lifecycle | Complete | PR #51 / Quality #200; PR #52 / Quality #202 | Final tagged artifact revalidation in release workflow |
+| Runtime Settings foundation | Complete foundation | PR #47, PR #51 | Provider/subsystem-specific env reads remain incremental refactor debt |
+| Deterministic SQLite connection lifecycle | Complete | PR #52 | None for current local adapter contract |
 | Token-efficient context | Complete | PR #5 | Continue quality benchmarking |
 | Hybrid search and embeddings | Complete foundation | PR #6, PR #12 | Background indexing and broader benchmarks |
 | Automatic sessions | Partial | PR #7 | Automatic project resolution and complete continuation checkpoints |
@@ -31,20 +36,17 @@ The remaining release work is no longer basic recovery. The active priorities ar
 | Deployment history and action risk | Complete | PR #14 | Broader deployment adapter coverage |
 | Evaluation and provenance suite | Complete | PR #15 | Expand scenarios as features evolve |
 | Local dashboard | Partial | PR #16 | Pagination, summary cards and maintenance UX |
-| Galaxy knowledge view | Complete foundation | PR #17, PR #18 | Performance and usability refinement |
+| Galaxy knowledge view | Complete foundation | PR #17, PR #18 | Performance/usability refinement |
 | Nested secret redaction | Complete | PR #20 | Continue adversarial coverage |
 | Confirmed deletion and retention execution | Complete | PR #26 | Dashboard controls may consume the workflow later |
-| SQLite-first packaging and cross-platform CI | Complete foundation | PR #30 | Released-upgrade validation |
-| Release artifact validation | Complete | PR #41 | Upgrade/uninstall validation against an installed 0.2.0 environment |
-| Centralized Settings/deprecation cleanup | Partial | PR #30 foundation; PR #47 draft | Finish critical caller migration and deprecation path |
+| SQLite-first packaging and cross-platform CI | Complete | PR #30, PR #41 | External release publication |
+| v0.3.0 release candidate | In review | PR #54 | Full candidate CI, merge/tag and external publication |
 | Teams and remote collaborative dashboard | Out of scope | PR #23 closed; issue #22 not planned | No implementation planned |
-| Distribution and MCP Registry | Partial | PR #41 foundation | Final release publication and registry submission |
+| GitHub Release / PyPI / MCP Registry | Planned publication | Issue #53 / PR #54 prep | Publish only exact validated artifacts |
 
 ## Verified backup contract
 
-PR #29 added a dedicated maintenance package and `BackupService` contract.
-
-A successful backup:
+PR #29 added a dedicated maintenance package and `BackupService` contract. A successful backup:
 
 - uses SQLite's backup API instead of copying the active file;
 - remains consistent while WAL mode is active;
@@ -53,122 +55,129 @@ A successful backup:
 - validates the completed database with `PRAGMA integrity_check`;
 - returns sizes, SQLite/schema versions and bounded table counts without exposing stored memory values.
 
-PR #35 added a versioned JSON sidecar for successful backups containing bounded structural metadata and SHA-256 verification while intentionally excluding stored memory values and the source database path.
+PR #35 adds a versioned JSON sidecar with SHA-256 verification, package/SQLite/schema metadata, size, integrity and bounded table counts while intentionally excluding stored memory values and the source database path.
 
 ## SQLite health contract
 
-PR #39 added a read-only `HealthService` and `memory-mcp health` command.
+PR #39 added a read-only `HealthService` and `memory-mcp health` command. The report:
 
-The health report:
-
-- always runs a bounded `PRAGMA quick_check`;
+- always runs bounded `PRAGMA quick_check`;
 - can run full `PRAGMA integrity_check` with `--full`;
-- reports foreign-key violations without returning row contents;
+- reports foreign-key violations without row contents;
 - verifies expected operational indexes;
 - reports SQLite/schema version, journal mode, DB/WAL/SHM sizes and free disk space;
 - can discover the latest valid SHA-256 backup through `--backup-dir`;
 - counts invalid backup manifests without exposing their contents;
-- returns `maintenance_ready=true` only when the database is structurally healthy and a verified backup is available;
-- avoids returning stored memory values or the absolute active database path in normal CLI output.
+- returns `maintenance_ready=true` only when structure is healthy and a verified backup is available;
+- avoids stored memory values and the absolute active database path in normal CLI output.
 
 ## Verified restore contract
 
-PR #43 introduced the two-phase restore workflow and PR #46 completed its cross-platform revalidation model.
+PR #43 introduced two-phase restore; PR #46 completed cross-platform revalidation.
 
-The restore flow:
-
-1. `plan_memory_restore` verifies the selected backup manifest, SHA-256, SQLite integrity, schema compatibility and disk headroom without mutating the active database.
-2. The plan contains a short-lived HMAC-bound confirmation token and a fingerprint of the exact operation.
+1. `plan_memory_restore` verifies backup manifest, SHA-256, integrity, schema compatibility and disk headroom without mutating the active database.
+2. The plan receives a short-lived HMAC-bound confirmation token and exact operation fingerprint.
 3. `execute_memory_restore` rejects changed, expired, invalid or reused plans.
-4. Immediately before replacement, the active database receives a fresh verified safety backup.
-5. Active logical SQLite state is revalidated through a consistent WAL-aware snapshot fingerprint. Filesystem `mtime` and size remain diagnostic metadata rather than semantic drift signals.
-6. WAL checkpoints must complete. WAL/SHM sidecar cleanup uses bounded retries for transient OS handle release and fails closed on persistent locks.
-7. The verified restore source is copied to a same-directory temporary file, rechecked and atomically replaced.
+4. The active database receives a fresh verified safety backup immediately before replacement.
+5. Logical SQLite state is revalidated through a consistent WAL-aware snapshot fingerprint; filesystem `mtime`/size are diagnostic rather than semantic drift signals.
+6. WAL checkpoints must complete; sidecar cleanup tolerates only bounded transient handle release and fails closed on persistent locks.
+7. The restore source is copied to a same-directory temporary file, rechecked and atomically replaced.
 8. Post-restore SHA-256, integrity and schema validation are mandatory.
-9. If post-replacement validation fails, the verified safety backup is restored automatically and validated.
+9. Failed post-replacement validation automatically restores and validates the safety backup.
 
-Quality run #188 passed the full Ubuntu/Windows/macOS Python 3.11–3.13 matrix, all three release-artifact clean-install jobs and dependency audit after the final cross-platform fix.
+Quality #188 passed the full Ubuntu/Windows/macOS Python 3.11–3.13 matrix, all release-artifact clean installs and dependency audit after the final restore fix.
 
-## Versioned migration contract
+## Versioned migration and installed-upgrade contract
 
-PR #45 established the first formal SQLite migration lifecycle.
+PR #45 established the migration engine. PR #51 integrated it into the user/runtime lifecycle.
 
 The migration service:
 
-- exposes a read-only preview that does not create `schema_migrations` or mutate the database;
+- exposes a read-only preview;
 - requires positive unique ordered versions;
-- rejects migration SQL that attempts to manage its own transaction;
-- validates `PRAGMA quick_check` and the required v0.2 core tables before any write;
-- rejects database schema versions newer than the supported migration set;
-- rejects migration history ahead of `PRAGMA user_version`;
-- rejects `user_version` claims for which the corresponding recorded history is missing;
-- records and verifies migration names and SHA-256 checksums;
-- creates a verified pre-migration backup before any pending migration is applied;
+- rejects migration SQL that manages its own transaction;
+- validates `quick_check` and required v0.2 core tables before writes;
+- rejects future schema versions and inconsistent `user_version`/history states;
+- records/validates migration names and SHA-256 checksums;
+- creates a verified pre-migration backup before pending migrations;
 - executes each migration transactionally and records it only after success;
-- leaves completed prior migrations intact while rolling back a failing migration's own transaction;
-- is idempotent once the database is current.
+- is idempotent once current.
 
-The first packaged migration establishes the explicit v0.3 schema baseline. Tests construct the existing v0.2 schema, insert existing task data, execute the migration and prove the data is preserved. Quality run #190 passed Ubuntu, Windows and macOS on Python 3.11–3.13, all three real wheel/sdist clean-install jobs and dependency audit.
+The installed lifecycle adds:
 
-This is a schema/data upgrade regression. A separate release-lifecycle check is still required to install the actual 0.2.0 package, upgrade it with the candidate v0.3.0 wheel, verify behavior, then validate uninstall/rollback instructions.
+- `memory-mcp-migrate` as the explicit user command;
+- read-only preview by default;
+- mutation only with `--apply --yes`;
+- startup migration-state inspection before server import/start;
+- fail-closed startup if an existing SQLite database is stale;
+- no startup automigration;
+- current-schema bootstrap only for a database file that was genuinely new and still empty;
+- refusal to bootstrap any database containing user rows, migration history or non-zero schema version.
 
-## SQLite-first packaging contract
+Quality #200 validates the real package path: CI builds/installs the pinned v0.2.0 commit `e502f747…`, creates actual project/task data, installs the candidate, confirms the stale schema is blocked, runs explicit backup-first migration and verifies data preservation on Ubuntu, Windows and macOS.
 
-PR #30 aligned installation and runtime behavior without forcing a breaking rewrite of legacy adapter helpers:
+## Deterministic SQLite connection lifecycle
 
-- new/default runtime configuration falls back to SQLite when no backend variable is present;
-- `MEMORY_BACKEND` is the canonical variable for new configuration;
-- the historical `MEMORY_STORAGE_BACKEND` alias is still accepted temporarily by the runtime migration path;
-- Supabase and PostgreSQL drivers moved to optional package extras instead of every SQLite installation;
-- the core package, lint, tests and evaluation regressions run on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13;
-- dependency audit also installs and checks the optional remote extras.
+PR #52 corrects a subtle Python `sqlite3` assumption in the local adapter. Native connection context management commits/rolls back but does not itself guarantee `close()`.
 
-The low-level legacy `normalize_backend(None)` contract remains preserved while critical callers migrate to the centralized Settings contract in PR #47.
+`SQLiteStorage.connect()` now returns a SQLite connection subtype through the supported `factory` hook. Its context exit:
 
-## Centralized Settings work
+1. executes native SQLite commit/rollback behavior;
+2. always closes the connection in `finally`.
 
-Issue #37 is active through draft PR #47.
+Success and exception-path regressions prove commit+close and rollback+close. Quality #202 revalidates the full Python/OS matrix, clean artifacts and historical installed upgrade lifecycle.
 
-The current Settings slice introduces:
+## SQLite-first packaging and RuntimeSettings
+
+PR #30 makes SQLite the normal local path and moves Supabase/PostgreSQL drivers to optional extras.
+
+PR #47 completed Issue #37's centralized Settings foundation:
 
 - immutable Pydantic-backed `RuntimeSettings`;
-- SQLite as the Settings default;
-- `MEMORY_BACKEND` as canonical and `MEMORY_STORAGE_BACKEND` as a deprecated transition alias;
-- a `FutureWarning` for the legacy alias;
-- fail-closed behavior when canonical and legacy backend variables conflict;
+- SQLite default;
+- canonical `MEMORY_BACKEND`;
+- transitional `MEMORY_STORAGE_BACKEND` with `FutureWarning`;
+- fail-closed conflicting aliases;
 - validated SQLite path, owner ID, remote configuration, logging, interface, privacy, ignore-pattern and retention settings;
-- `SecretStr` masking for Supabase, PostgreSQL and confirmation secrets;
-- the existing `OWNER_ID` fallback for restore/deletion confirmation compatibility;
-- Settings-based storage client selection in `src/utils/db.py`;
-- Settings injection support at the verified restore integration boundary without changing public MCP tool names.
+- `SecretStr` masking for Supabase/PostgreSQL/confirmation secrets;
+- existing `OWNER_ID` confirmation-secret fallback;
+- Settings-based storage client resolution/injection and restore integration.
 
-The first PR #47 matrix is green. The issue remains partial until critical direct environment reads are migrated and the final deprecation contract is documented and revalidated against current `main`.
+PR #51 also uses RuntimeSettings for startup backend/path and migration readiness. Specialized provider/subsystem environment variables remain valid incremental configuration inputs and are not a blocker for the v0.3.0 local product.
 
-## Release artifact validation contract
+## Release artifact contract
 
-PR #41 validates the artifacts users would actually install rather than relying only on editable development installs.
+PR #41 validates artifacts users actually install:
 
-Release CI now:
+- `python -m build` wheel/sdist;
+- `twine check`;
+- required runtime/schema assets;
+- clean wheel install outside the source checkout;
+- installed entrypoint and CLI smoke tests on Ubuntu/Windows/macOS.
 
-- builds wheel and sdist with `python -m build`;
-- runs `twine check` on both artifacts;
-- checks that required runtime and SQLite schema assets are packaged;
-- installs the wheel in a fresh virtual environment outside the repository checkout;
-- verifies the `memory-mcp` entrypoint;
-- smoke-tests installed `init`, `doctor`, `status` and `health` commands;
-- confirms the local SQLite database and client configuration are created from the built wheel;
-- runs this artifact validation on Ubuntu, Windows and macOS.
+PR #51 adds the installed historical upgrade lifecycle on every release-artifact OS job.
 
-The clean Windows install exposed a real CP1252 redirected-console bug; PR #41 replaced Unicode status glyphs with portable `[ok]`, `[error]` and `[skip]` markers and modernized license metadata.
+PR #54 release candidate adds:
+
+- package version `0.3.0` in metadata;
+- editable-install version assertion;
+- wheel filename/METADATA and sdist root version validation;
+- generated/verified `SHA256SUMS` for wheel/sdist;
+- `CHANGELOG.md`;
+- `docs/UPGRADING.md` with backup-first upgrade/rollback;
+- `docs/RELEASING.md` with GitHub Release, PyPI and MCP Registry gates;
+- a tag workflow that requires `vX.Y.Z` to equal package version, rebuilds exact-tag artifacts, repeats clean install/historical upgrade checks, generates checksums and retains the bundle without automatically publishing it.
+
+External publishing intentionally remains separate until trusted publication configuration and the exact tag bundle are verified.
 
 ## Confirmed deletion contract
 
-PR #26 added two MCP tools:
+PR #26 added:
 
-- `plan_memory_deletion` creates a dry-run preview with exact IDs, counts, fingerprint, expiry and signed confirmation token.
-- `execute_memory_deletion` validates the unchanged plan, active owner/project scope, expiry and single-use confirmation before deleting exact IDs.
+- `plan_memory_deletion` for dry-run exact IDs/counts/fingerprint/expiry/signed confirmation;
+- `execute_memory_deletion` for unchanged, scoped, unexpired and single-use confirmed plans.
 
-The same contract supports retention candidates. Retention deletion never runs automatically at startup. Current records are revalidated immediately before mutation, unrelated projects are preserved, and audit events store operation metadata and counts without copying deleted content.
+Retention candidates use the same contract. Retention deletion never runs automatically at startup. Current records are revalidated immediately before mutation, unrelated projects remain intact and audit events store operation metadata/counts without deleted content.
 
 ## Product scope
 
@@ -183,50 +192,58 @@ Persistent Memory MCP is designed around:
 - no public remote collaborative dashboard;
 - no billing or organization-management surface.
 
-Supabase and PostgreSQL adapters remain available as optional advanced self-managed persistence modes, but they do not change the local product direction.
+Supabase/PostgreSQL adapters remain optional advanced self-managed persistence modes without changing the local product direction.
 
 ## Definition of done for the technical core
 
-The technical core is substantially complete when:
+The local technical core has complete foundations for sanitization/scoping, deletion, backup, health, restore, versioned migration, installed upgrade, cross-platform package validation, deployment safety and regression evaluation.
 
-- every memory write is sanitized and scoped;
-- reads and writes enforce owner/project boundaries;
-- selective deletion and retention execution are exposed safely;
-- embeddings can be persisted, refreshed and reindexed;
-- sessions automatically identify projects and save continuation checkpoints;
-- symbol indexes persist across revisions;
-- adversarial isolation, poisoned-memory and handoff tests pass.
+Non-blocking product refinements remain partial:
 
-Confirmed deletion, verified backup, manifest verification, health diagnostics, verified restore, versioned migrations, local-first package defaults and real artifact validation are complete foundations. Automatic continuation, persistent symbol evolution and centralized Settings remain partial.
+- automatic project resolution/continuation checkpoints;
+- persistent symbol evolution/history;
+- dashboard pagination, summary cards and maintenance controls;
+- broader search/provider benchmarks.
 
 ## Definition of done for v0.3.0
 
-Already completed for the v0.3.0 safety foundation:
+Completed before the release candidate:
 
-- SQLite-first package configuration with optional remote dependencies;
-- Ubuntu, Windows and macOS critical-path CI on Python 3.11–3.13;
-- verified SQLite backup and SHA-256 manifest foundations;
-- read-only SQLite health and maintenance-readiness diagnostics;
-- two-phase verified restore with pre-restore safety backup and rollback;
-- cross-platform WAL-aware restore drift/handle behavior;
-- versioned checksum-validated SQLite migrations;
-- v0.2-shaped schema/data migration regression with preserved existing data;
-- wheel/sdist build, metadata validation and clean wheel installation on Ubuntu, Windows and macOS.
+- [x] SQLite-first package configuration with optional remote dependencies.
+- [x] Ubuntu/Windows/macOS critical-path CI on Python 3.11–3.13.
+- [x] Verified SQLite backup and SHA-256 manifest foundations.
+- [x] Read-only SQLite health and maintenance-readiness diagnostics.
+- [x] Two-phase verified restore with safety backup and rollback.
+- [x] Cross-platform WAL-aware restore behavior.
+- [x] Versioned checksum-validated SQLite migrations.
+- [x] Explicit migration CLI and fail-closed startup guard.
+- [x] Real installed v0.2.0 → candidate upgrade with existing data preserved on all three operating systems.
+- [x] Deterministic context-managed SQLite connection close semantics.
+- [x] Centralized validated Settings foundation.
+- [x] Wheel/sdist build, metadata and clean-install validation on all three operating systems.
 
-The release still requires:
+Prepared in PR #54:
 
-- completion of centralized Settings/deprecation cleanup — issue #37 / PR #47;
-- released-package upgrade/uninstall/rollback validation from an actual installed 0.2.0 environment;
-- synchronized release notes and rollback instructions;
-- GitHub Release and PyPI publication validation;
-- MCP Registry preparation.
+- [x] Package metadata bumped to 0.3.0.
+- [x] Release notes and backup-first upgrade/rollback instructions.
+- [x] SHA-256 artifact manifest generation/verification.
+- [x] Exact-tag non-publishing release bundle workflow.
+- [x] README/ROADMAP/IMPLEMENTATION_STATUS release reconciliation.
+
+Remaining publication gate:
+
+- [ ] PR #54 exact head passes complete Quality CI.
+- [ ] Merge the validated candidate and create `v0.3.0` tag from that exact merge commit.
+- [ ] Tag workflow succeeds and retained wheel/sdist/`SHA256SUMS` bundle is verified.
+- [ ] Create final GitHub Release with exact validated artifacts.
+- [ ] Publish the same wheel/sdist to PyPI after secure publication configuration is confirmed.
+- [ ] Prepare/submit MCP Registry metadata after public URLs are stable.
 
 ## Recommended implementation order
 
-1. Finish centralized Settings/deprecation cleanup — issue #37 / PR #47.
-2. Validate actual package upgrade/uninstall/rollback from 0.2.0 to the v0.3.0 candidate.
-3. Complete dashboard pagination, health cards and safe maintenance actions.
-4. Complete automatic project resolution and continuation checkpoints.
-5. Persist and enrich the symbol graph across revisions.
-6. Finalize release notes, rollback instructions and publish v0.3.0.
-7. Prepare MCP Registry submission.
+1. Finish PR #54 Quality CI and fix any release-candidate regression.
+2. Merge the exact green candidate and tag its merge commit `v0.3.0`.
+3. Validate the tag-generated artifact/checksum bundle.
+4. Publish the exact bundle to GitHub Release and PyPI once publication trust/config is confirmed.
+5. Prepare/submit MCP Registry metadata.
+6. Resume dashboard, continuation and symbol-history refinements as post-v0.3 work.
