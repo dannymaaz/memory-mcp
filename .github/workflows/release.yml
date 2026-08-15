@@ -1,0 +1,55 @@
+name: Release artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build validated release bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install release tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+      - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -c "import os, pathlib, tomllib; tag=os.environ['RELEASE_TAG']; version=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version']; assert tag == f'v{version}', (tag, version)"
+      - name: Build wheel and sdist
+        run: python -m build
+      - name: Validate metadata and v0.3 artifact version
+        run: |
+          python -m twine check dist/*
+          python scripts/validate_release_version.py dist
+      - name: Generate and verify checksums
+        run: |
+          python scripts/generate_checksums.py dist
+          python scripts/generate_checksums.py dist --verify
+      - name: Validate clean installed wheel
+        run: python scripts/validate_release_artifact.py dist
+      - name: Revalidate installed v0.2.0 upgrade
+        run: python scripts/validate_v020_upgrade.py dist .
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: persistent-memory-mcp-${{ github.ref_name }}
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
