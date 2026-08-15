@@ -1,6 +1,6 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap reflects merged work through PR #35. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
+This roadmap reflects merged work through PR #35 and PR #30. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
 
 ## Status legend
 
@@ -16,13 +16,12 @@ This roadmap reflects merged work through PR #35. Persistent Memory MCP is a loc
 - `memory-mcp` and `persistent-memory-mcp` command aliases.
 - `init`, `doctor`, `status` and `serve` commands.
 - Safe client configuration with backup, rollback and uninstall support.
-- Python 3.11–3.13 CI coverage.
+- Ubuntu, Windows and macOS CI across Python 3.11–3.13.
 
 Remaining release work:
 
 - clean wheel/sdist installation validation;
-- upgrade/uninstall validation against released packages;
-- final cross-platform release matrix.
+- upgrade/uninstall validation against released packages.
 
 ### Local storage and isolation — ✅ Complete
 
@@ -181,14 +180,21 @@ Tracked by issue #34.
 - Require verified backup before irreversible migrations.
 - Validate upgrade from the current 0.2.0 schema.
 
-### 5. Configuration and package cleanup — 🟡 In progress
+### 5. Configuration and package cleanup — ✅ Complete foundation
 
-PR #30 is the current implementation track.
+PR #30 aligned installation and runtime behavior with the local-first product direction:
 
-- Make SQLite the explicit runtime/configuration default without silently breaking legacy adapter contracts.
-- Keep `MEMORY_BACKEND` canonical while accepting the legacy alias during migration.
-- Move Supabase/PostgreSQL drivers to optional extras.
-- Validate the core package across Linux, Windows and macOS.
+- SQLite is the explicit default for new/runtime configuration when no backend is supplied;
+- `MEMORY_BACKEND` is canonical while the historical `MEMORY_STORAGE_BACKEND` alias remains temporarily accepted during migration;
+- Supabase/PostgreSQL drivers are optional package extras rather than core dependencies;
+- the core package, lint, tests and evaluation regressions pass on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13;
+- dependency audit validates both the core path and optional remote extras.
+
+Remaining architectural cleanup:
+
+- centralize configuration in one Settings object;
+- add a formal deprecation path for the legacy backend alias;
+- validate built wheel/sdist artifacts in clean environments before release.
 
 ### 6. Dashboard completion — ⬜ Planned
 
@@ -220,6 +226,8 @@ PR #30 is the current implementation track.
 - [x] Selective deletion and confirmed retention execution.
 - [x] WAL-safe verified local backup.
 - [x] Versioned SHA-256 backup manifests and tamper detection.
+- [x] SQLite-first core packaging with optional remote extras.
+- [x] Core CI on Ubuntu, Windows and macOS across Python 3.11–3.13.
 - [ ] Health and integrity diagnostics.
 - [ ] Confirmed two-phase restore and disaster recovery.
 - [ ] Versioned SQLite migrations.
