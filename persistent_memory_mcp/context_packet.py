@@ -13,11 +13,17 @@ from persistent_memory_mcp.context_engine import (
     ContextResult,
     build_context,
 )
-from persistent_memory_mcp.tokenization import TokenCounter, measure_tokens, resolve_token_counter
+from persistent_memory_mcp.tokenization import (
+    TokenCounter,
+    TokenMeasurement,
+    measure_tokens,
+    resolve_token_counter,
+)
 
 CONTEXT_PACKET_VERSION = "1.0"
 DEFAULT_SAFETY_MARGIN = 0.08
 MIN_CONTEXT_PACKET_BUDGET = 256
+COMPACT_METADATA_BUDGET = 512
 _REMOVABLE_FIELDS = (
     "timeline",
     "sessions",
@@ -95,7 +101,7 @@ def _selected_content_items(payload: Mapping[str, Any]) -> list[tuple[str, dict[
     return items
 
 
-def _collect_sources(payload: Mapping[str, Any]) -> list[str]:
+def _collect_sources(payload: Mapping[str, Any], *, compact: bool) -> list[str]:
     sources: list[str] = []
     seen: set[str] = set()
     project = payload.get("project")
@@ -109,10 +115,10 @@ def _collect_sources(payload: Mapping[str, Any]) -> list[str]:
         if label and label not in seen:
             seen.add(label)
             sources.append(label)
-    return sources[:24]
+    return sources[:8 if compact else 24]
 
 
-def _verification(payload: Mapping[str, Any]) -> dict[str, Any]:
+def _verification(payload: Mapping[str, Any], *, compact: bool) -> dict[str, Any]:
     items = [item for _, item in _selected_content_items(payload)]
     sourced = sum(_provenance(item) not in (None, "", [], {}) for item in items)
     untrusted = sum(
@@ -136,6 +142,8 @@ def _verification(payload: Mapping[str, Any]) -> dict[str, Any]:
         status = "partial"
     else:
         status = "unverified"
+    if compact:
+        return {"status": status}
     return {
         "status": status,
         "selected_items": len(items),
@@ -144,13 +152,13 @@ def _verification(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _next_safe_action(payload: Mapping[str, Any]) -> str | None:
+def _next_safe_action(payload: Mapping[str, Any], *, compact: bool) -> str | None:
     for field in ("checkpoints", "sessions", "tasks"):
         for item in _mapping_items(payload.get(field)):
             for key in ("next_step", "remaining_work"):
                 value = item.get(key)
                 if value not in (None, "", [], {}):
-                    return _compact(value, 240)
+                    return _compact(value, 120 if compact else 240)
     return None
 
 
@@ -188,6 +196,8 @@ def _refresh_legacy_metrics(
     source_context: Mapping[str, Any],
     payload: dict[str, Any],
     counter: TokenCounter,
+    *,
+    compact: bool,
 ) -> None:
     metrics = payload.get("context_metrics")
     if not isinstance(metrics, dict):
@@ -200,6 +210,8 @@ def _refresh_legacy_metrics(
         block["dropped_items"] for field, block in blocks.items() if field != "project"
     )
     compressed_items = sum(block["compressed_items"] for block in blocks.values())
+    if compact:
+        metrics.clear()
     metrics.update(
         {
             "selected_items": selected_items,
@@ -218,14 +230,20 @@ def _packet_metadata(
     budget: int,
     effective_budget: int,
     safety_margin: float,
+    compact: bool,
 ) -> dict[str, Any]:
-    return {
-        "version": CONTEXT_PACKET_VERSION,
-        "objective": _compact(intent, 300) if intent else None,
-        "next_safe_action": _next_safe_action(payload),
-        "sources": _collect_sources(payload),
-        "verification": _verification(payload),
-        "tokens": {
+    tokens: dict[str, Any]
+    if compact:
+        tokens = {
+            "budget": budget,
+            "count": 0,
+            "tokenizer": counter.name,
+            "mode": "exact" if counter.exact else "estimated",
+        }
+        if counter.model:
+            tokens["model"] = counter.model
+    else:
+        tokens = {
             "budget": budget,
             "effective_content_budget": effective_budget,
             "safety_margin_percent": round(safety_margin * 100, 2),
@@ -237,8 +255,31 @@ def _packet_metadata(
             "fallback": not counter.exact,
             "estimation_error_tokens": None,
             "estimation_error_percent": None,
-        },
+        }
+    packet = {
+        "version": CONTEXT_PACKET_VERSION,
+        "objective": _compact(intent, 160 if compact else 300) if intent else None,
+        "sources": _collect_sources(payload, compact=compact),
+        "verification": _verification(payload, compact=compact),
+        "tokens": tokens,
     }
+    next_action = _next_safe_action(payload, compact=compact)
+    if next_action:
+        packet["next_safe_action"] = next_action
+    return packet
+
+
+def _apply_measurement(tokens: dict[str, Any], measurement: TokenMeasurement) -> None:
+    if "estimated_count" in tokens:
+        tokens.update(measurement.as_dict())
+        return
+    tokens["count"] = measurement.count
+    tokens["tokenizer"] = measurement.tokenizer
+    tokens["mode"] = "exact" if measurement.exact else "estimated"
+    if measurement.model:
+        tokens["model"] = measurement.model
+    else:
+        tokens.pop("model", None)
 
 
 def _refresh_token_usage(payload: dict[str, Any], counter: TokenCounter) -> int:
@@ -253,12 +294,12 @@ def _refresh_token_usage(payload: dict[str, Any], counter: TokenCounter) -> int:
     for _ in range(8):
         measurement = measure_tokens(payload, counter)
         signature = (measurement.count, measurement.estimated_count)
-        tokens.update(measurement.as_dict())
+        _apply_measurement(tokens, measurement)
         if signature == previous:
             break
         previous = signature
     final = measure_tokens(payload, counter)
-    tokens.update(final.as_dict())
+    _apply_measurement(tokens, final)
     return final.count
 
 
@@ -314,6 +355,7 @@ def build_context_packet(
     if not 0.0 <= safety_margin < 0.5:
         raise ValueError("safety_margin must be between 0.0 and 0.5")
 
+    compact = token_budget <= COMPACT_METADATA_BUDGET
     counter = resolve_token_counter(model=model, tokenizer=tokenizer)
     effective_budget = max(128, int(token_budget * (1.0 - safety_margin)))
     legacy = build_context(
@@ -327,11 +369,13 @@ def build_context_packet(
         now=now,
     )
     output = dict(legacy.context)
+    if compact:
+        output.pop("context_policy", None)
     for key, value in (fixed_fields or {}).items():
         if key in {"context_packet", "context_policy", "context_metrics"}:
             raise ValueError(f"fixed field {key!r} is reserved by the Context Packet contract")
         output[key] = value
-    _refresh_legacy_metrics(context, output, counter)
+    _refresh_legacy_metrics(context, output, counter, compact=compact)
     output["context_packet"] = _packet_metadata(
         output,
         intent=intent,
@@ -339,6 +383,7 @@ def build_context_packet(
         budget=token_budget,
         effective_budget=effective_budget,
         safety_margin=safety_margin,
+        compact=compact,
     )
 
     while True:
@@ -350,7 +395,7 @@ def build_context_packet(
             raise ValueError(
                 "context packet control metadata and required project data exceed the token budget"
             )
-        _refresh_legacy_metrics(context, output, counter)
+        _refresh_legacy_metrics(context, output, counter, compact=compact)
         output["context_packet"] = _packet_metadata(
             output,
             intent=intent,
@@ -358,6 +403,7 @@ def build_context_packet(
             budget=token_budget,
             effective_budget=effective_budget,
             safety_margin=safety_margin,
+            compact=compact,
         )
 
     return ContextPacketResult(
