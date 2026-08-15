@@ -59,8 +59,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[tokenizers]"
           pip install pytest
+      - name: Report deterministic estimator error
+        run: python scripts/evaluate_tokenization.py
       - name: Validate Context Packet and tokenizer fixtures
-        run: pytest -q tests/test_tokenization.py tests/test_context_packet.py
+        run: pytest -q tests/test_tokenization.py tests/test_context_packet.py tests/test_context_packet_routing.py
 
   release-artifacts:
     name: Release artifacts · ${{ matrix.os }}
