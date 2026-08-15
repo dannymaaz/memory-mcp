@@ -1,6 +1,6 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap reflects merged work through PR #26. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
+This roadmap reflects merged work through PR #35. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
 
 ## Status legend
 
@@ -11,12 +11,18 @@ This roadmap reflects merged work through PR #26. Persistent Memory MCP is a loc
 
 ## Delivered foundation
 
-### Product CLI and local onboarding — ✅ Complete
+### Product CLI and local onboarding — ✅ Complete foundation
 
 - `memory-mcp` and `persistent-memory-mcp` command aliases.
 - `init`, `doctor`, `status` and `serve` commands.
 - Safe client configuration with backup, rollback and uninstall support.
 - Python 3.11–3.13 CI coverage.
+
+Remaining release work:
+
+- clean wheel/sdist installation validation;
+- upgrade/uninstall validation against released packages;
+- final cross-platform release matrix.
 
 ### Local storage and isolation — ✅ Complete
 
@@ -35,6 +41,26 @@ This roadmap reflects merged work through PR #26. Persistent Memory MCP is a loc
 - Rejection of altered, expired, cross-scope or reused plans.
 - Exact ID deletion, pre-mutation revalidation and audit metadata without deleted content.
 
+### Verified SQLite backup — ✅ Complete foundation
+
+PR #29 established recoverable local backup creation:
+
+- backups use `sqlite3.Connection.backup()` instead of copying the live file;
+- active WAL-mode databases are supported;
+- source/destination collisions and accidental overwrite are rejected;
+- incomplete temporary files are cleaned after failures;
+- each completed copy must pass `PRAGMA integrity_check`;
+- results expose bounded structural metadata without stored memory values.
+
+PR #35 added independent backup verification:
+
+- versioned JSON manifests;
+- SHA-256 digest verification;
+- package, SQLite and schema version metadata;
+- bounded table counts and integrity result;
+- tamper, malformed-manifest and incompatible-version detection;
+- no memory values or source database paths in manifests.
+
 ### Context, search and embeddings — ✅ Complete foundation
 
 - Intent-aware context and token budgets.
@@ -44,36 +70,36 @@ This roadmap reflects merged work through PR #26. Persistent Memory MCP is a loc
 
 Remaining refinements:
 
-- Background indexing.
-- Broader search-quality and provider-cost benchmarks.
+- background indexing;
+- broader search-quality and provider-cost benchmarks.
 
 ### Session continuity — 🟡 Partial
 
 Completed:
 
-- Session reuse, heartbeat and stale-session closure.
-- Cross-client handoff and checkpoints.
+- session reuse, heartbeat and stale-session closure;
+- cross-client handoff and checkpoints.
 
 Remaining:
 
-- Fully automatic project resolution at session start.
-- Automatic milestone capture before shutdown or context exhaustion.
-- Complete local continuation contract and quality validation.
+- fully automatic project resolution at session start;
+- automatic milestone capture before shutdown or context exhaustion;
+- complete local continuation contract and quality validation.
 
 ### Git verification and code intelligence — 🟡 Partial
 
 Completed:
 
-- Repository, branch, commit, file and working-tree verification.
-- Stale, contradicted, missing-source and unverified states.
-- Python, JavaScript, TypeScript and SQL symbol extraction.
-- Bounded impact graphs.
+- repository, branch, commit, file and working-tree verification;
+- stale, contradicted, missing-source and unverified states;
+- Python, JavaScript, TypeScript and SQL symbol extraction;
+- bounded impact graphs.
 
 Remaining:
 
-- Persistent symbol history across revisions.
-- Moved, renamed and deleted symbol tracking.
-- Links from symbols to tests, tasks and deployments.
+- persistent symbol history across revisions;
+- moved, renamed and deleted symbol tracking;
+- links from symbols to tests, tasks and deployments.
 
 ### Duplicate, contradiction and deployment safety — ✅ Complete foundation
 
@@ -86,18 +112,18 @@ Remaining:
 
 Completed:
 
-- Localhost-only dashboard.
-- Read-only project, session, decision, task, warning, retention and deployment views.
-- Bounded filtering and JSON/CSV export.
-- Galaxy knowledge visualization with bounded graphs.
-- Confirmed deletion MCP workflow available as the safe maintenance foundation.
+- localhost-only dashboard;
+- read-only project, session, decision, task, warning, retention and deployment views;
+- bounded filtering and JSON/CSV export;
+- Galaxy knowledge visualization with bounded graphs;
+- confirmed deletion MCP workflow available as the safe maintenance foundation.
 
 Remaining:
 
-- Explicit pagination cursors.
-- Operational summary cards for storage, staleness, verification and sensitivity.
-- Polished empty, loading and error states.
-- Dashboard controls that consume the confirmed deletion workflow safely.
+- explicit pagination cursors;
+- operational summary cards for storage, staleness, verification and sensitivity;
+- polished empty, loading and error states;
+- safe maintenance controls for backup, restore and confirmed deletion.
 
 ## Product scope decision
 
@@ -115,50 +141,88 @@ The product remains:
 
 Workspace invitations, team roles, shared memory, public remote dashboards, billing and organization administration are not milestones.
 
-## Next delivery milestones
+## v0.3.0 — Data Safety and Recovery
 
-### 1. Verified local backup and restore — ⬜ Planned
+### 1. Verified backup creation and manifests — ✅ Complete foundation
 
-- Create consistent SQLite backups while WAL mode is active.
-- Add SHA-256 manifests, schema/version metadata and integrity validation.
-- Support full and bounded restore previews.
-- Refuse accidental overwrite and require explicit confirmation.
-- Document migration and disaster-recovery procedures.
+- [x] Consistent WAL-safe SQLite backup — PR #29 / issue #28.
+- [x] Integrity validation and bounded metadata — PR #29.
+- [x] Versioned SHA-256 manifest and tamper verification — PR #35 / issue #31.
 
-### 2. Integrity and recovery — ⬜ Planned
+### 2. Database health and integrity — ⬜ Planned
 
-- Detect corrupted databases, missing references and orphan records.
-- Validate indexes and repair recoverable inconsistencies.
-- Handle interrupted restore and insufficient disk space safely.
+Tracked by issue #32.
 
-### 3. Dashboard completion — ⬜ Planned
+- Add `memory-mcp health`.
+- Run `quick_check` and optional full `integrity_check`.
+- Validate foreign keys and expected indexes.
+- Report database/WAL size, schema version and available disk space.
+- Surface the latest verified backup without exposing memory contents.
+- Detect bounded orphan/reference inconsistencies.
+
+### 3. Two-phase verified restore — ⬜ Planned
+
+Tracked by issue #33.
+
+- Validate checksum, integrity, schema compatibility and available space.
+- Produce an exact restore preview before mutation.
+- Require explicit confirmation bound to the unchanged plan.
+- Create a fresh verified backup of the active database before replacement.
+- Replace the active database safely and recover from interrupted failures.
+
+### 4. Versioned SQLite migrations — ⬜ Planned
+
+Tracked by issue #34.
+
+- Add `schema_migrations` tracking.
+- Package ordered SQLite migration files.
+- Record and validate migration checksums.
+- Execute migrations transactionally.
+- Require verified backup before irreversible migrations.
+- Validate upgrade from the current 0.2.0 schema.
+
+### 5. Configuration and package cleanup — 🟡 In progress
+
+PR #30 is the current implementation track.
+
+- Make SQLite the explicit runtime/configuration default without silently breaking legacy adapter contracts.
+- Keep `MEMORY_BACKEND` canonical while accepting the legacy alias during migration.
+- Move Supabase/PostgreSQL drivers to optional extras.
+- Validate the core package across Linux, Windows and macOS.
+
+### 6. Dashboard completion — ⬜ Planned
 
 - Add pagination, summary cards and accessible maintenance workflows.
 - Surface backup health, last verified backup and database size.
 - Integrate confirmed deletion and restore previews without bypassing safety gates.
 
-### 4. Automatic continuation completion — ⬜ Planned
+### 7. Automatic continuation completion — ⬜ Planned
 
 - Resolve active projects automatically.
 - Capture important session changes and checkpoints.
 - Persist the next safe action before shutdown or context exhaustion.
 
-### 5. Distribution and publication — ⬜ Planned
+### 8. Distribution and publication — ⬜ Planned
 
-- Package publication and release automation.
-- Versioned upgrade and migration documentation.
-- Clean install, update and uninstall validation.
-- MCP Registry submission.
+- Build and validate wheel and sdist artifacts.
+- Install the wheel in a clean environment.
+- Validate upgrade and uninstall workflows.
+- Publish GitHub Release and PyPI artifacts with checksums.
+- Prepare MCP Registry submission.
 
 ## Final product validation
 
-- [ ] Clean local installation and upgrade.
+- [ ] Clean local installation and upgrade from 0.2.0.
 - [x] Safe multi-client configuration and rollback.
 - [x] SQLite local-first storage.
 - [x] Owner/project isolation.
 - [x] Runtime sanitization and poisoned-memory resistance.
 - [x] Selective deletion and confirmed retention execution.
-- [ ] Verified local backup and restore.
+- [x] WAL-safe verified local backup.
+- [x] Versioned SHA-256 backup manifests and tamper detection.
+- [ ] Health and integrity diagnostics.
+- [ ] Confirmed two-phase restore and disaster recovery.
+- [ ] Versioned SQLite migrations.
 - [ ] Complete automatic continuation.
 - [x] Git-grounded stale-memory classification foundation.
 - [ ] Persistent symbol history and full impact analysis.
