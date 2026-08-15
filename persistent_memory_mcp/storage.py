@@ -318,9 +318,9 @@ class SQLiteClient:
 
 
 def normalize_backend(value: str | None) -> str:
-    """Normalize supported backend aliases."""
+    """Normalize supported backend aliases with SQLite as the local-first default."""
 
-    normalized = (value or "supabase").strip().lower()
+    normalized = (value or "sqlite").strip().lower()
     aliases = {"postgres": "postgresql", "local": "sqlite"}
     normalized = aliases.get(normalized, normalized)
     if normalized not in {"sqlite", "supabase", "postgresql"}:
