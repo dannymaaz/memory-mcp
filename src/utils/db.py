@@ -1,4 +1,4 @@
-"""Database client helpers for local SQLite and remote Supabase backends."""
+"""Database client helpers for local SQLite and optional remote backends."""
 
 from __future__ import annotations
 
@@ -21,15 +21,22 @@ except Exception:  # pragma: no cover - fallback for environments without depend
 load_dotenv()
 
 
+def _configured_backend() -> str:
+    """Resolve the canonical backend while accepting the legacy alias temporarily."""
+    value = os.getenv("MEMORY_BACKEND") or os.getenv("MEMORY_STORAGE_BACKEND") or "sqlite"
+    return normalize_backend(value)
+
+
 def get_supabase_client() -> Any:
     """Create the configured storage client.
 
     The historical function name is preserved for compatibility with the existing
-    service layer. For ``MEMORY_BACKEND=sqlite`` it returns a local facade exposing
-    the subset of the Supabase query API used by ``src.server``.
+    service layer. SQLite is the default and returns a local facade exposing the
+    subset of the Supabase query API used by ``src.server``. Remote backends remain
+    opt-in and require their optional dependencies and credentials.
     """
 
-    backend = normalize_backend(os.getenv("MEMORY_BACKEND", "supabase"))
+    backend = _configured_backend()
     if backend == "sqlite":
         return create_sqlite_client(os.getenv("SQLITE_PATH"))
 
@@ -45,7 +52,6 @@ def get_supabase_client() -> Any:
 
 def set_owner_context(client: Any, owner_id: str) -> Any:
     """Attach owner context for RLS, SQLite scoping and traceability."""
-
     normalized_owner = str(owner_id).strip()
     if not normalized_owner:
         raise ValueError("owner_id is required")
