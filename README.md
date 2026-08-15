@@ -8,6 +8,7 @@
   <a href="https://dannymaaz.github.io/memory-mcp/">Documentation</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#context-packet-and-token-budgets">Context Packet</a> ·
+  <a href="#progressive-repository-retrieval">Repository retrieval</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -36,6 +37,7 @@ The post-v0.3 direction goes beyond storing memory. Persistent Memory MCP is evo
 | Sessions and checkpoints | Resume from a known implementation state |
 | Hybrid search | Combine semantic and lexical retrieval with local fallback |
 | **Context Packet v1** | Deliver versioned, provenance-aware context under a hard token budget |
+| **Progressive repository retrieval** | Expand map → files → symbols → exact fragments instead of loading whole repositories |
 | Verified local backup | Create WAL-safe SQLite backups with integrity validation |
 | SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
 | Health diagnostics | Inspect SQLite integrity and maintenance readiness without mutation |
@@ -155,16 +157,62 @@ The optional extra uses `tiktoken` when the requested model/encoding is resolvab
 
 ### Reproducible estimator measurements
 
-PR #60 adds fixed Spanish and source-code fixtures plus `scripts/evaluate_tokenization.py`.
+PR #60 added fixed Spanish and source-code fixtures plus `scripts/evaluate_tokenization.py`.
 
-Current measurements against `gpt-4o` / `tiktoken:o200k_base`:
+Validated measurements against `gpt-4o` / `tiktoken:o200k_base`:
 
 | Fixture | Reference tokens | Deterministic fallback | Error |
 |---|---:|---:|---:|
 | Spanish prose | 69 | 80 | **15.94%** |
 | Python/source code | 138 | 140 | **1.45%** |
 
-The CI guardrail allows at most 40% error on these initial fixtures; the current worst case is 15.94%. The reference-tokenizer packet suite runs on Ubuntu, Windows and macOS in addition to the normal Python 3.11–3.13 matrix.
+The CI guardrail allows at most 40% error on these initial fixtures; the validated worst case is 15.94%. Context Packet/tokenizer reference jobs run on Ubuntu, Windows and macOS in addition to the normal Python 3.11–3.13 matrix.
+
+## Progressive repository retrieval
+
+PR #62 / MEM-37 implements the second Context Compiler layer through the real MCP runtime as `retrieve_repository_context`.
+
+The retrieval path is intentionally progressive:
+
+1. map supported repository paths with `git ls-files` without reading every file's content;
+2. rank candidate files using path evidence plus bounded local `git grep` signals;
+3. parse symbols only from the bounded candidate set using the existing Python/TypeScript/JavaScript/SQL code-intelligence parsers;
+4. expand bounded graph neighbors;
+5. read only the selected symbol fragments and return exact line ranges instead of whole files.
+
+Every returned fragment carries repository-relative path, start/end lines, fragment SHA-256, whole-file SHA-256 and Git commit/ref provenance. Recognized secrets are redacted before fragment content leaves the retrieval service.
+
+### Retrieval safety and limits
+
+The retrieval service:
+
+- rejects absolute paths, traversal and resolved paths outside the repository root;
+- applies `RuntimeSettings.ignore_patterns` together with existing code-intelligence excludes;
+- never executes repository code;
+- limits mapped files, parsed files, symbols, graph neighbors, file bytes, total fragment bytes, fragment lines, page size and token budget;
+- binds pagination cursors to the query, commit and hashes of ranked candidate files so committed or relevant dirty-working-tree changes invalidate stale cursors;
+- uses the same Context Packet token-counter contract instead of a separate estimator;
+- trims low-priority retrieval payload sections until the final serialized response fits the requested token budget, and fails closed if mandatory control metadata alone cannot fit.
+
+### Reproducible progressive-retrieval measurement
+
+`scripts/evaluate_repository_retrieval.py` creates a deterministic synthetic repository and verifies that retrieval remains bounded.
+
+Current PR #62 measurement:
+
+| Metric | Result |
+|---|---:|
+| Supported files mapped | **80** |
+| Candidate files parsed | **6** |
+| Repository parse fraction | **7.5%** |
+| Selected fragments | **2** |
+| Fragment bytes emitted | **284 B** |
+| Target file lines | **125** |
+| Target fragment lines | **7** |
+| Target fragment / file ratio | **5.6%** |
+| Final retrieval tokens | **1,305 / 1,400** |
+
+The top ranked file and top fragment are both the intended `services/security.py` target. The evaluation is executed in CI on Ubuntu, Windows and macOS alongside the Context Packet reference jobs.
 
 ## Upgrading from 0.2.0
 
@@ -191,6 +239,8 @@ See [docs/UPGRADING.md](docs/UPGRADING.md) for the complete upgrade and rollback
 ```text
 Resume this project and tell me where we left off.
 Load only the context needed to continue the authentication refactor.
+Find validate_token and return only the relevant source fragment with provenance.
+Show the repository files and symbols relevant to the session implementation.
 Save the architecture decision we just made.
 Show active warnings before changing authentication.
 Search project memory for the database migration decision.
@@ -205,15 +255,15 @@ MCP client A ─────┐
 MCP client B ─────┼── Model Context Protocol ── Persistent Memory MCP
 MCP client C ─────┘                                      │
                                                          ├─ local SQLite memory
-                                                         ├─ Git/repository evidence
-                                                         ├─ search + ranking
-                                                         ├─ trust/provenance filters
+                                                         ├─ Git repository map
+                                                         ├─ bounded file/symbol retrieval
+                                                         ├─ provenance + trust filters
                                                          └─ Context Packet compiler
                                                                   │
                                                                   └─ bounded agent context
 ```
 
-The server resolves project context, retrieves structured memory/evidence, rejects expired or unsafe records, ranks what matters for the current intent, compresses oversized items and compiles the result under a hard budget.
+The server resolves project context, retrieves structured memory/evidence, rejects expired or unsafe records, ranks what matters for the current intent, progressively expands repository evidence only as needed and compiles the result under a hard budget.
 
 ## Main MCP tools
 
@@ -223,6 +273,7 @@ The server resolves project context, retrieves structured memory/evidence, rejec
 | `capture_project_memory` | Save decisions, tasks, warnings, files and state together |
 | `search_semantic_memory` | Search project memory by meaning with lexical fallback |
 | `load_unified_context` | Return optimized project context through the Context Packet delivery path |
+| `retrieve_repository_context` | Retrieve bounded repository map/file/symbol/fragment evidence with provenance and token limits |
 | `save_cross_interface_decision` | Preserve technical decisions across compatible local clients |
 | `update_task_status` | Track work across sessions and clients |
 | `sync_session_state` | Save current working state |
@@ -236,7 +287,7 @@ Operational CLI commands include `memory-mcp init`, `doctor`, `status`, `health`
 
 ## Data-safety model
 
-Persistent Memory MCP uses explicit, fail-closed maintenance contracts:
+Persistent Memory MCP uses explicit, fail-closed maintenance and context contracts:
 
 - backups use SQLite's backup API rather than copying a live file;
 - successful backups must pass integrity validation;
@@ -246,6 +297,7 @@ Persistent Memory MCP uses explicit, fail-closed maintenance contracts:
 - migrations use read-only preview and verified pre-migration backup before explicit apply;
 - startup refuses stale existing schemas rather than automigrating;
 - deletion/retention uses exact plan fingerprints and short-lived confirmation;
+- repository retrieval is local/read-only, root-contained, ignored-path aware and fragment-bounded;
 - context-managed SQLite handles close deterministically after commit/rollback semantics.
 
 ## Privacy and product scope
@@ -253,8 +305,8 @@ Persistent Memory MCP uses explicit, fail-closed maintenance contracts:
 - SQLite is the default local persistence backend.
 - The dashboard binds to localhost only.
 - Reads/writes are scoped by project and local owner identity.
-- Sensitive values are redacted before persistence.
-- Context compilation does not execute code.
+- Sensitive values are redacted before persistence and recognized secrets are redacted from emitted repository fragments.
+- Context compilation and repository retrieval do not execute code.
 - Optional exact token measurement runs locally; the fallback is provider-free.
 - Team memberships, shared roles, billing and public collaborative dashboards are out of scope.
 
@@ -262,8 +314,8 @@ Persistent Memory MCP uses explicit, fail-closed maintenance contracts:
 
 The mandatory post-v0.3 order is:
 
-1. **Context Packet + model-aware token accounting** — PR #60 / MEM-36, in review.
-2. **Progressive repository retrieval** — repository map → file → symbol → exact fragment.
+1. ✅ **Context Packet + model-aware token accounting** — PR #60 / MEM-36 complete.
+2. 🟡 **Progressive repository retrieval** — PR #62 / MEM-37 in review.
 3. **Persistent code provenance and symbol evolution** across revisions.
 4. **Context-quality regression guardrails** with measurable golden scenarios.
 5. **Operational project map / Galaxy** built on verified retrieval/provenance data.
