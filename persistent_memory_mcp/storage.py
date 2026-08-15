@@ -13,6 +13,16 @@ from typing import Any, Protocol, runtime_checkable
 JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
 
 
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve sqlite transaction context semantics and always close on exit."""
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> Any:
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 @runtime_checkable
 class StorageAdapter(Protocol):
     """Minimal backend contract used by the MCP service layer."""
@@ -83,7 +93,7 @@ class SQLiteStorage:
 
     def connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, factory=_ClosingSQLiteConnection)
         connection.row_factory = sqlite3.Row
         connection.execute("pragma foreign_keys = on")
         connection.execute("pragma journal_mode = wal")

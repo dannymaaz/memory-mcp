@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,40 @@ def test_initialize_and_healthcheck(tmp_path: Path) -> None:
     ok, detail = storage.healthcheck()
     assert ok is True
     assert "SQLite" in detail
+
+
+def test_connection_context_commits_and_closes(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "memory.db")
+    storage.initialize()
+    connection = storage.connect()
+
+    with connection:
+        connection.execute(
+            "insert into projects(id, owner_id, name, slug) values(?, ?, ?, ?)",
+            ("context-project", "owner-1", "Context", "context"),
+        )
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("select 1")
+    assert storage.select("projects", {"id": "context-project"})[0]["name"] == "Context"
+
+
+def test_connection_context_rolls_back_and_closes_on_error(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "memory.db")
+    storage.initialize()
+    connection = storage.connect()
+
+    with pytest.raises(RuntimeError, match="force rollback"):
+        with connection:
+            connection.execute(
+                "insert into projects(id, owner_id, name, slug) values(?, ?, ?, ?)",
+                ("rolled-back", "owner-1", "Rolled Back", "rolled-back"),
+            )
+            raise RuntimeError("force rollback")
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("select 1")
+    assert storage.select("projects", {"id": "rolled-back"}) == []
 
 
 def test_insert_select_and_json_round_trip(tmp_path: Path) -> None:
