@@ -45,3 +45,15 @@ class BackupIntegrityError(BackupError):
     """Raised when the completed backup fails SQLite integrity validation."""
 
     code = "backup_integrity_error"
+
+
+class BackupManifestError(BackupError):
+    """Raised when backup manifest metadata is missing or malformed."""
+
+    code = "backup_manifest_error"
+
+
+class BackupVerificationError(BackupError):
+    """Raised when a backup no longer matches its verification manifest."""
+
+    code = "backup_verification_error"
