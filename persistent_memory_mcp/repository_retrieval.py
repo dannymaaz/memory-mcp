@@ -10,7 +10,7 @@ import re
 import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable
 
 from .code_intelligence import (
     DEFAULT_EXCLUDES,
@@ -146,8 +146,11 @@ class ProgressiveRepositoryRetriever:
             if not value:
                 continue
             relative = value.replace("\\", "/")
-            path = self._safe_file(root, relative)
-            if path.suffix.lower() not in SUPPORTED_SUFFIXES or self._ignored(relative):
+            if self._ignored(relative) or Path(relative).suffix.lower() not in SUPPORTED_SUFFIXES:
+                continue
+            try:
+                self._safe_file(root, relative)
+            except ValueError:
                 continue
             files.append(relative)
             if len(files) >= limits.max_index_files:
@@ -172,6 +175,37 @@ class ProgressiveRepositoryRetriever:
     @staticmethod
     def _terms(value: str) -> tuple[str, ...]:
         return tuple(sorted({item.casefold() for item in _WORD_RE.findall(value) if len(item) > 1}))
+
+    def _grep_hits(
+        self,
+        snapshot: GitSnapshot,
+        files: Iterable[str],
+        query: str,
+    ) -> set[str]:
+        """Use Git's local search to identify candidate files without loading them into Python."""
+        terms = [term for term in self._terms(query) if len(term) >= 3][:8]
+        if not terms:
+            return set()
+        command = ["git", "-C", snapshot.repository, "grep", "-I", "-l", "-F"]
+        for term in terms:
+            command.extend(["-e", term])
+        command.append("--")
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if completed.returncode not in {0, 1}:
+            return set()
+        allowed = set(files)
+        hits = {
+            line.strip().replace("\\", "/")
+            for line in completed.stdout.splitlines()
+            if line.strip()
+        }
+        return {item for item in hits if item in allowed and not self._ignored(item)}
 
     def _repository_map(
         self,
@@ -218,6 +252,7 @@ class ProgressiveRepositoryRetriever:
         root: Path,
         files: Iterable[str],
         query: str,
+        grep_hits: set[str],
         *,
         limits: RetrievalLimits,
     ) -> list[RankedFile]:
@@ -230,6 +265,9 @@ class ProgressiveRepositoryRetriever:
             stem = path.stem.casefold()
             reasons: list[str] = []
             score = 0.0
+            if relative in grep_hits:
+                score += 7.0
+                reasons.append("git-grep-content-match")
             if normalized_query and normalized_query in rendered:
                 score += 8.0
                 reasons.append("query-in-path")
@@ -237,7 +275,7 @@ class ProgressiveRepositoryRetriever:
             if matched_terms:
                 score += 5.0 * (len(matched_terms) / max(1, len(terms)))
                 reasons.append("path-term-overlap")
-            if stem in terms:
+            if stem in terms or any(stem in term for term in terms if len(stem) >= 3):
                 score += 4.0
                 reasons.append("basename-match")
             extension_term = path.suffix.lower().lstrip(".")
@@ -399,12 +437,25 @@ class ProgressiveRepositoryRetriever:
         )
         return ranked[: limits.max_symbols]
 
-    @staticmethod
-    def _cursor_fingerprint(snapshot: GitSnapshot, query: str) -> str:
-        value = f"{snapshot.commit_sha}\0{query.strip().casefold()}".encode("utf-8")
-        return hashlib.sha256(value).hexdigest()[:20]
+    def _state_fingerprint(
+        self,
+        root: Path,
+        snapshot: GitSnapshot,
+        query: str,
+        ranked_files: Iterable[RankedFile],
+    ) -> str:
+        digest = hashlib.sha256()
+        digest.update(snapshot.commit_sha.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(query.strip().casefold().encode("utf-8"))
+        for ranked in ranked_files:
+            digest.update(b"\0")
+            digest.update(ranked.path.encode("utf-8"))
+            digest.update(b":")
+            digest.update((file_sha256(root, ranked.path) or "missing").encode("ascii"))
+        return digest.hexdigest()[:24]
 
-    def _decode_cursor(self, cursor: str | None, snapshot: GitSnapshot, query: str) -> int:
+    def _decode_cursor(self, cursor: str | None, fingerprint: str) -> int:
         if not cursor:
             return 0
         try:
@@ -414,19 +465,15 @@ class ProgressiveRepositoryRetriever:
             raise ValueError("invalid repository retrieval cursor") from exc
         if payload.get("v") != _CURSOR_VERSION:
             raise ValueError("unsupported repository retrieval cursor version")
-        if payload.get("fingerprint") != self._cursor_fingerprint(snapshot, query):
+        if payload.get("fingerprint") != fingerprint:
             raise ValueError("repository retrieval cursor is stale or belongs to another query")
         offset = int(payload.get("offset", -1))
         if offset < 0 or offset > _MAX_LIMIT:
             raise ValueError("invalid repository retrieval cursor offset")
         return offset
 
-    def _encode_cursor(self, offset: int, snapshot: GitSnapshot, query: str) -> str:
-        payload = {
-            "v": _CURSOR_VERSION,
-            "offset": offset,
-            "fingerprint": self._cursor_fingerprint(snapshot, query),
-        }
+    def _encode_cursor(self, offset: int, fingerprint: str) -> str:
+        payload = {"v": _CURSOR_VERSION, "offset": offset, "fingerprint": fingerprint}
         raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -554,15 +601,23 @@ class ProgressiveRepositoryRetriever:
         root = Path(snapshot.repository).resolve()
         files = self._tracked_files(snapshot, active_limits)
         repository_map = self._repository_map(files, limits=active_limits)
-        ranked_files = self._rank_files(root, files, query, limits=active_limits)
+        grep_hits = self._grep_hits(snapshot, files, query)
+        ranked_files = self._rank_files(
+            root,
+            files,
+            query,
+            grep_hits,
+            limits=active_limits,
+        )
         index = self._selected_index(snapshot, ranked_files, limits=active_limits)
         ranked_symbols = self._rank_symbols(index, query, limits=active_limits)
+        fingerprint = self._state_fingerprint(root, snapshot, query, ranked_files)
 
-        offset = self._decode_cursor(cursor, snapshot, query)
+        offset = self._decode_cursor(cursor, fingerprint)
         page_end = min(len(ranked_symbols), offset + active_limits.page_size)
         page = ranked_symbols[offset:page_end]
         next_cursor = (
-            self._encode_cursor(page_end, snapshot, query)
+            self._encode_cursor(page_end, fingerprint)
             if page_end < len(ranked_symbols)
             else None
         )
@@ -612,6 +667,7 @@ class ProgressiveRepositoryRetriever:
                 "files_skipped": index.files_skipped,
                 "symbols": len(index.symbols),
                 "warnings": list(index.warnings)[:20],
+                "grep_candidates": len(grep_hits),
             },
             "token_usage": {
                 "budget": active_limits.token_budget,
@@ -627,9 +683,7 @@ class ProgressiveRepositoryRetriever:
         return payload
 
 
-def build_progressive_retrieval_tool(
-    settings: RuntimeSettings,
-) -> Any:
+def build_progressive_retrieval_tool(settings: RuntimeSettings) -> Any:
     """Build the MCP-compatible retrieval tool using validated runtime ignore policy."""
     retriever = ProgressiveRepositoryRetriever(ignore_patterns=settings.ignore_patterns)
 
