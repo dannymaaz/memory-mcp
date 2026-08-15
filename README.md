@@ -66,7 +66,14 @@ memory-mcp init
 
 The setup command creates a private configuration, initializes the local SQLite database and generates an MCP configuration block for supported clients. The default local database is `~/.memory-mcp/memory.db`.
 
-Supabase and PostgreSQL adapters remain available for advanced self-managed storage, but they do not change the local-first product direction. The v0.3 packaging work is moving their drivers to opt-in extras so a normal SQLite installation remains lightweight.
+Supabase and PostgreSQL remain available for advanced self-managed storage, but their drivers are optional extras rather than core dependencies:
+
+```bash
+pip install "persistent-memory-mcp[supabase]"
+pip install "persistent-memory-mcp[postgresql]"
+```
+
+The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13.
 
 ### 3. Diagnose the installation
 
@@ -187,12 +194,15 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] Selective deletion and confirmed retention execution
 - [x] WAL-safe SQLite backup with integrity validation
 - [x] Versioned SHA-256 backup manifests and tamper detection
+- [x] SQLite-first core packaging with optional remote database extras
+- [x] Ubuntu, Windows and macOS CI across Python 3.11–3.13
 - [ ] `memory-mcp health` and integrity diagnostics
 - [ ] Confirmed two-phase SQLite restore
 - [ ] Versioned SQLite migrations and 0.2.0 upgrade validation
 - [ ] Dashboard pagination and operational summary cards
 - [ ] Complete automatic continuation checkpoints
-- [ ] Package publication, upgrades and MCP Registry release
+- [ ] Wheel/sdist clean-install validation and release publication
+- [ ] MCP Registry release
 
 ## Documentation
 
