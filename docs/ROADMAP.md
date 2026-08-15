@@ -1,6 +1,6 @@
 # Persistent Memory MCP delivery roadmap
 
-This roadmap reflects merged work through PR #39. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
+This roadmap reflects merged work through PR #41. Persistent Memory MCP is a local-first personal application: one local installation, one private localhost dashboard and no shared workspace or multi-user role model.
 
 ## Status legend
 
@@ -17,11 +17,12 @@ This roadmap reflects merged work through PR #39. Persistent Memory MCP is a loc
 - `init`, `doctor`, `status`, `health` and `serve` commands.
 - Safe client configuration with backup, rollback and uninstall support.
 - Ubuntu, Windows and macOS CI across Python 3.11–3.13.
+- Wheel/sdist build and clean-install validation on Ubuntu, Windows and macOS.
 
 Remaining release work:
 
-- clean wheel/sdist installation validation;
-- upgrade/uninstall validation against released packages.
+- upgrade/uninstall validation against an existing 0.2.0 installation;
+- final release publication and rollback documentation.
 
 ### Local storage and isolation — ✅ Complete
 
@@ -200,11 +201,20 @@ PR #30 aligned installation and runtime behavior with the local-first product di
 - the core package, lint, tests and evaluation regressions pass on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13;
 - dependency audit validates both the core path and optional remote extras.
 
+PR #41 completed built-artifact validation:
+
+- `python -m build` produces wheel and sdist;
+- `twine check` validates package metadata;
+- packaged SQLite/runtime assets are inspected directly;
+- the wheel is installed in a clean environment outside the repository checkout;
+- installed `init`, `doctor`, `status` and `health` commands are smoke-tested on Ubuntu, Windows and macOS;
+- a real Windows CP1252 redirected-console bug was fixed by replacing Unicode status glyphs with portable ASCII markers;
+- license metadata was modernized for current setuptools behavior.
+
 Remaining architectural cleanup:
 
 - centralize configuration in one Settings object — issue #37;
-- add a formal deprecation path for the legacy backend alias — issue #37;
-- validate built wheel/sdist artifacts in clean environments — issue #38.
+- add a formal deprecation path for the legacy backend alias — issue #37.
 
 ### 6. Dashboard completion — ⬜ Planned
 
@@ -218,18 +228,25 @@ Remaining architectural cleanup:
 - Capture important session changes and checkpoints.
 - Persist the next safe action before shutdown or context exhaustion.
 
-### 8. Distribution and publication — ⬜ Planned
+### 8. Distribution and publication — 🟡 Partial
 
-- Build and validate wheel and sdist artifacts — issue #38.
-- Install the wheel in a clean environment.
-- Validate upgrade and uninstall workflows.
-- Publish GitHub Release and PyPI artifacts with checksums.
-- Prepare MCP Registry submission.
+Completed:
+
+- [x] Build and validate wheel and sdist artifacts — PR #41 / issue #38.
+- [x] Install the wheel in clean environments on Ubuntu, Windows and macOS.
+- [x] Run installed CLI smoke tests outside the source checkout.
+
+Remaining:
+
+- [ ] Validate upgrade from 0.2.0 and uninstall/rollback behavior against an existing installation.
+- [ ] Publish GitHub Release and PyPI artifacts with checksums.
+- [ ] Prepare MCP Registry submission.
 
 ## Final product validation
 
-- [ ] Clean local installation and upgrade from 0.2.0.
-- [x] Safe multi-client configuration and rollback.
+- [ ] Upgrade from an existing 0.2.0 installation.
+- [x] Clean wheel installation on Ubuntu, Windows and macOS.
+- [x] Safe multi-client configuration and rollback foundation.
 - [x] SQLite local-first storage.
 - [x] Owner/project isolation.
 - [x] Runtime sanitization and poisoned-memory resistance.
@@ -239,6 +256,7 @@ Remaining architectural cleanup:
 - [x] Health and integrity diagnostics.
 - [x] SQLite-first core packaging with optional remote extras.
 - [x] Core CI on Ubuntu, Windows and macOS across Python 3.11–3.13.
+- [x] Wheel/sdist metadata and clean-install validation.
 - [ ] Confirmed two-phase restore and disaster recovery.
 - [ ] Versioned SQLite migrations.
 - [ ] Complete automatic continuation.

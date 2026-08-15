@@ -74,7 +74,7 @@ pip install "persistent-memory-mcp[supabase]"
 pip install "persistent-memory-mcp[postgresql]"
 ```
 
-The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13.
+The core package and regression suite are validated on Ubuntu, Windows and macOS across Python 3.11, 3.12 and 3.13. Release CI also builds the wheel and sdist, runs `twine check`, installs the wheel in a clean environment outside the source checkout and smoke-tests `init`, `doctor`, `status` and `health` on all three operating systems.
 
 ### 3. Diagnose the installation
 
@@ -178,6 +178,8 @@ PR #35 adds a versioned JSON manifest to every successful backup with a SHA-256 
 
 PR #39 adds read-only SQLite health diagnostics so maintenance can verify the active database, structural indexes, foreign keys, storage headroom and available verified backups before later restore or migration operations.
 
+PR #41 validates the actual built wheel and sdist on Ubuntu, Windows and macOS. That clean-install validation also caught and fixed a Windows redirected-console encoding bug by replacing Unicode status glyphs with portable ASCII markers such as `[ok]`, `[error]` and `[skip]`.
+
 Restore remains intentionally unavailable until the v0.3 two-phase restore workflow can validate the selected backup, preview the exact operation, create a fresh safety backup and require explicit confirmation.
 
 ## Privacy and security
@@ -203,7 +205,7 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] Cross-client session continuity foundation
 - [x] Semantic search with lexical fallback
 - [x] Import, export, timeline and retention foundations
-- [x] Interactive `init`, `doctor` and `status` commands
+- [x] Interactive `init`, `doctor`, `status` and `health` commands
 - [x] Local SQLite starter mode
 - [x] Localhost-only visual memory dashboard
 - [x] Automatic nested secret redaction
@@ -214,11 +216,12 @@ Persistent Memory MCP is not a collaborative SaaS. Workspace invitations, team m
 - [x] SQLite health and maintenance-readiness diagnostics
 - [x] SQLite-first core packaging with optional remote database extras
 - [x] Ubuntu, Windows and macOS CI across Python 3.11–3.13
+- [x] Wheel/sdist build, metadata check and clean-install validation on all three operating systems
 - [ ] Confirmed two-phase SQLite restore
 - [ ] Versioned SQLite migrations and 0.2.0 upgrade validation
 - [ ] Dashboard pagination and operational summary cards
 - [ ] Complete automatic continuation checkpoints
-- [ ] Wheel/sdist clean-install validation and release publication
+- [ ] Final release publication and upgrade/uninstall validation
 - [ ] MCP Registry release
 
 ## Documentation
