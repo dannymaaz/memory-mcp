@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sqlite3
+import time
 from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,6 +20,8 @@ from .manifest import manifest_path_for, sha256_file, verify_backup_manifest
 
 DEFAULT_RESTORE_TTL_SECONDS = 300
 MAX_RESTORE_TTL_SECONDS = 3600
+SIDECAR_UNLINK_ATTEMPTS = 8
+SIDECAR_UNLINK_DELAY_SECONDS = 0.05
 _USED_RESTORE_FINGERPRINTS: set[str] = set()
 
 
@@ -262,9 +265,9 @@ class RestoreService:
         }
 
     def _revalidate_plan(self, plan: RestorePlan, target: Path, backup: Path) -> None:
-        target_stat = target.stat()
-        if target_stat.st_size != plan.target_size_bytes or target_stat.st_mtime_ns != plan.target_mtime_ns:
-            raise RestorePlanError("active database changed after restore preview", path=target)
+        # Filesystem size/mtime are retained in the preview for diagnostics and sizing,
+        # but WAL checkpoints and SQLite housekeeping can legitimately change them.
+        # Logical drift is therefore decided by the consistent SQLite snapshot hash.
         if not hmac.compare_digest(self._database_fingerprint(target), plan.target_fingerprint):
             raise RestorePlanError("active database changed after restore preview", path=target)
         manifest = verify_backup_manifest(backup, plan.manifest_path)
@@ -314,7 +317,30 @@ class RestoreService:
         return int(shutil.disk_usage(path).free)
 
     @staticmethod
-    def _checkpoint_and_clear_sidecars(target: Path) -> None:
+    def _remove_sidecar_with_retry(
+        sidecar: Path,
+        *,
+        attempts: int = SIDECAR_UNLINK_ATTEMPTS,
+        delay_seconds: float = SIDECAR_UNLINK_DELAY_SECONDS,
+    ) -> None:
+        """Remove a WAL/SHM sidecar after transient OS file handles are released."""
+        last_error: OSError | None = None
+        for attempt in range(attempts):
+            try:
+                sidecar.unlink(missing_ok=True)
+                return
+            except FileNotFoundError:
+                return
+            except OSError as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    time.sleep(delay_seconds)
+        raise RestoreExecutionError(
+            "active database sidecar is in use; restore aborted", path=sidecar
+        ) from last_error
+
+    @classmethod
+    def _checkpoint_and_clear_sidecars(cls, target: Path) -> None:
         connection = sqlite3.connect(target, timeout=0.2)
         try:
             row = connection.execute("pragma wal_checkpoint(truncate)").fetchone()
@@ -323,13 +349,7 @@ class RestoreService:
         finally:
             connection.close()
         for suffix in ("-wal", "-shm"):
-            sidecar = Path(f"{target}{suffix}")
-            try:
-                sidecar.unlink(missing_ok=True)
-            except OSError as exc:
-                raise RestoreExecutionError(
-                    "active database sidecar is in use; restore aborted", path=sidecar
-                ) from exc
+            cls._remove_sidecar_with_retry(Path(f"{target}{suffix}"))
 
     def _validate_restored_target(self, target: Path, plan: RestorePlan) -> None:
         if sha256_file(target) != plan.backup_sha256:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -24,23 +25,32 @@ def restore_confirmation_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _database(path: Path, value: str, *, schema_version: int = 7) -> None:
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         connection.execute("pragma journal_mode = wal")
         connection.execute(f"pragma user_version = {schema_version}")
         connection.execute("create table state (id integer primary key, value text not null)")
         connection.execute("insert into state (id, value) values (1, ?)", (value,))
         connection.commit()
+    finally:
+        connection.close()
 
 
 def _read_value(path: Path) -> str:
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         return str(connection.execute("select value from state where id = 1").fetchone()[0])
+    finally:
+        connection.close()
 
 
 def _set_value(path: Path, value: str) -> None:
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         connection.execute("update state set value = ? where id = 1", (value,))
         connection.commit()
+    finally:
+        connection.close()
 
 
 def _prepared_restore(tmp_path: Path) -> tuple[Path, Path, RestoreService]:
@@ -109,6 +119,20 @@ def test_active_database_change_after_preview_is_rejected(tmp_path: Path) -> Non
 
     assert _read_value(target) == "changed-after-preview"
     assert not Path(plan.safety_backup_path).exists()
+
+
+def test_filesystem_metadata_change_without_logical_drift_is_allowed(tmp_path: Path) -> None:
+    target, backup, service = _prepared_restore(tmp_path)
+    plan, token = service.plan_restore(backup)
+    stat = target.stat()
+    changed_mtime = stat.st_mtime_ns + 2_000_000_000
+    os.utime(target, ns=(stat.st_atime_ns, changed_mtime))
+
+    assert target.stat().st_mtime_ns != plan.target_mtime_ns
+    result = service.execute_restore(plan, token)
+
+    assert result["status"] == "ok"
+    assert _read_value(target) == "original-backup-state"
 
 
 def test_schema_mismatch_is_rejected_during_preview(tmp_path: Path) -> None:
@@ -182,3 +206,51 @@ def test_restore_source_cannot_be_the_active_database(tmp_path: Path) -> None:
 
     with pytest.raises(RestorePlanError, match="must differ"):
         RestoreService(target).plan_restore(target)
+
+
+def test_sidecar_removal_retries_transient_file_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sidecar = tmp_path / "memory.db-wal"
+    sidecar.write_bytes(b"wal")
+    original_unlink = Path.unlink
+    calls = 0
+
+    def flaky_unlink(path: Path, missing_ok: bool = False) -> None:
+        nonlocal calls
+        if path == sidecar:
+            calls += 1
+            if calls < 3:
+                raise PermissionError("transient Windows file handle")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+
+    RestoreService._remove_sidecar_with_retry(sidecar, attempts=3, delay_seconds=0)
+
+    assert calls == 3
+    assert not sidecar.exists()
+
+
+def test_sidecar_removal_fails_closed_when_lock_persists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sidecar = tmp_path / "memory.db-wal"
+    sidecar.write_bytes(b"wal")
+    original_unlink = Path.unlink
+    calls = 0
+
+    def locked_unlink(path: Path, missing_ok: bool = False) -> None:
+        nonlocal calls
+        if path == sidecar:
+            calls += 1
+            raise PermissionError("persistent Windows file handle")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", locked_unlink)
+
+    with pytest.raises(RestoreExecutionError, match="sidecar is in use"):
+        RestoreService._remove_sidecar_with_retry(sidecar, attempts=3, delay_seconds=0)
+
+    assert calls == 3
+    assert sidecar.exists()
