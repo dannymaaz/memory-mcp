@@ -42,6 +42,23 @@ def test_get_supabase_client_returns_sqlite_facade(monkeypatch, tmp_path: Path) 
     assert client.storage.healthcheck()[0] is True
 
 
+def test_runtime_defaults_to_sqlite_without_backend_variable(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("MEMORY_BACKEND", raising=False)
+    monkeypatch.delenv("MEMORY_STORAGE_BACKEND", raising=False)
+    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "memory.db"))
+    client = get_supabase_client()
+    assert client.backend_name == "sqlite"
+    assert client.storage.path == (tmp_path / "memory.db").resolve()
+
+
+def test_legacy_storage_backend_alias_remains_supported(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("MEMORY_BACKEND", raising=False)
+    monkeypatch.setenv("MEMORY_STORAGE_BACKEND", "sqlite")
+    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "memory.db"))
+    client = get_supabase_client()
+    assert client.backend_name == "sqlite"
+
+
 def test_init_sqlite_creates_database_env_and_client_configs(tmp_path: Path) -> None:
     env_path = tmp_path / ".env"
     output_dir = tmp_path / "configs"
@@ -58,6 +75,8 @@ def test_init_sqlite_creates_database_env_and_client_configs(tmp_path: Path) -> 
             database_url=None,
             owner_id="owner-test",
             skip_connection_test=False,
+            install=False,
+            yes=False,
         )
     )
     assert result == 0
