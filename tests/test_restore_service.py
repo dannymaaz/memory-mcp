@@ -18,6 +18,11 @@ from persistent_memory_mcp.maintenance import (
 )
 
 
+@pytest.fixture(autouse=True)
+def restore_confirmation_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MEMORY_CONFIRMATION_SECRET", "restore-test-secret")
+
+
 def _database(path: Path, value: str, *, schema_version: int = 7) -> None:
     with sqlite3.connect(path) as connection:
         connection.execute("pragma journal_mode = wal")
