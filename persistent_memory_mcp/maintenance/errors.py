@@ -24,42 +24,46 @@ class MaintenanceError(RuntimeError):
 
 
 class BackupError(MaintenanceError):
-    """Base error for backup creation failures."""
-
     code = "backup_error"
 
 
 class BackupSourceError(BackupError):
-    """Raised when the source database cannot be used safely."""
-
     code = "backup_source_error"
 
 
 class BackupDestinationError(BackupError):
-    """Raised when the requested destination is unsafe or unavailable."""
-
     code = "backup_destination_error"
 
 
 class BackupIntegrityError(BackupError):
-    """Raised when the completed backup fails SQLite integrity validation."""
-
     code = "backup_integrity_error"
 
 
 class BackupManifestError(BackupError):
-    """Raised when backup manifest metadata is missing or malformed."""
-
     code = "backup_manifest_error"
 
 
 class BackupVerificationError(BackupError):
-    """Raised when a backup no longer matches its verification manifest."""
-
     code = "backup_verification_error"
 
 
 class HealthError(MaintenanceError):
-    """Raised when local database health cannot be assessed safely."""
-
     code = "health_error"
+
+
+class MigrationError(MaintenanceError):
+    """Base error for local SQLite migrations."""
+
+    code = "migration_error"
+
+
+class MigrationChecksumError(MigrationError):
+    code = "migration_checksum_error"
+
+
+class MigrationCompatibilityError(MigrationError):
+    code = "migration_compatibility_error"
+
+
+class MigrationExecutionError(MigrationError):
+    code = "migration_execution_error"
