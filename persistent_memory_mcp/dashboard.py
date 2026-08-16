@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 
+from .dashboard_maintenance_http import (
+    MAX_ACTION_BODY_BYTES,
+    dispatch_maintenance_action,
+    render_maintenance_controls,
+)
 from .dashboard_status import DashboardStatusError, DashboardStatusService
 from .galaxy_view import render_galaxy_view
 from .knowledge_graph import build_knowledge_graph, compact_graph_context
@@ -310,7 +315,9 @@ def _maintenance_cards(maintenance: Mapping[str, Any] | None) -> str:
     verification = maintenance.get("verification", {})
     sensitivity = maintenance.get("sensitivity", {})
     backup_info = backup.get("latest_verified") or {}
-    backup_label = backup_info.get("backup_name") or ("Not configured" if not backup.get("configured") else "None verified")
+    backup_label = backup_info.get("backup_name") or (
+        "Not configured" if not backup.get("configured") else "None verified"
+    )
     sensitivity_total = sum(int(value) for value in (sensitivity.get("totals") or {}).values())
     values = (
         ("Health", health.get("status", "unknown")),
@@ -329,7 +336,12 @@ def _maintenance_cards(maintenance: Mapping[str, Any] | None) -> str:
         + "</span></article>"
         for label, value in values
     )
-    return '<section class="maintenance" aria-labelledby="maintenance-heading"><h2 id="maintenance-heading">Maintenance status</h2><div class="cards">' + cards + '</div></section>'
+    return (
+        '<section class="maintenance" aria-labelledby="maintenance-heading">'
+        '<h2 id="maintenance-heading">Maintenance status</h2><div class="cards">'
+        + cards
+        + "</div></section>"
+    )
 
 
 def render_dashboard(
@@ -345,11 +357,14 @@ def render_dashboard(
         for name, value in counts.items()
     )
     query = html.escape(str(filters.get("query") or ""), quote=True)
-    project = html.escape(str(filters.get("project_id") or ""), quote=True)
+    raw_project = str(filters.get("project_id") or "")
+    project = html.escape(raw_project, quote=True)
     sections: list[str] = []
     for name, rows in tables.items():
         body = "".join(
-            "<li><code>" + html.escape(json.dumps(row, ensure_ascii=False, default=str)) + "</code></li>"
+            "<li><code>"
+            + html.escape(json.dumps(row, ensure_ascii=False, default=str))
+            + "</code></li>"
             for row in rows
         ) or '<li class="empty" role="status">No records yet.</li>'
         page_link = ""
@@ -370,28 +385,35 @@ def render_dashboard(
     )
     maintenance_href = "/api/maintenance/status" + (f"?project_id={project}" if project else "")
     operational_label = "Operational galaxy" if project else "Operational projects"
+    controls = render_maintenance_controls(
+        maintenance,
+        project_id=raw_project or None,
+    )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width">'
         '<title>Persistent Memory MCP Dashboard</title><style>'
         'body{font-family:system-ui,sans-serif;margin:0;background:#0b1220;color:#e5edf8}'
         'main{max-width:1180px;margin:auto;padding:32px}header{margin-bottom:24px}'
-        '.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}'
+        '.cards,.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}'
         'article,section,form{background:#121c2e;border:1px solid #26344b;border-radius:12px;padding:16px}'
         'article span{display:block;font-size:1.45rem;margin-top:8px}.maintenance{margin:16px 0}.maintenance .cards{margin-top:12px}'
-        '.maintenance-card span{font-size:1.1rem}.status.error{border-color:#a33;color:#ffd3d3}.empty{color:#9fb0c7}'
+        '.maintenance-card span{font-size:1.1rem}.status.error{border-color:#a33;color:#ffd3d3}.empty,.muted{color:#9fb0c7}'
+        '.maintenance-actions{margin:16px 0}.maintenance-actions article{display:flex;flex-direction:column;gap:10px}'
+        '.action-status{white-space:pre-wrap;overflow:auto;background:#0b1220;border:1px solid #26344b;border-radius:8px;padding:12px}'
         'section{margin-top:16px}ol{padding-left:20px}li{margin:8px 0;overflow-wrap:anywhere}code{white-space:pre-wrap}'
         'small{color:#9fb0c7}form{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}'
-        'input,button,a{padding:10px;border-radius:8px;border:1px solid #41516b;background:#0b1220;color:#e5edf8;text-decoration:none}'
+        'input,select,button,a{padding:10px;border-radius:8px;border:1px solid #41516b;background:#0b1220;color:#e5edf8;text-decoration:none}'
+        'button:disabled,input:disabled{opacity:.55;cursor:not-allowed}'
         '</style></head><body><main><header><h1>Persistent Memory MCP</h1>'
-        '<small>Local read-only operational dashboard</small></header>'
+        '<small>Local-first operational dashboard; destructive actions require preview and confirmation.</small></header>'
         f'<form method="get"><input name="project_id" placeholder="Project ID" value="{project}">'
         f'<input name="q" placeholder="Search" maxlength="200" value="{query}">'
         '<button type="submit">Filter</button>'
         f'<a href="{galaxy_href}">Open galaxy</a>'
         f'<a href="{operational_href}">{operational_label}</a>'
         f'<a href="{maintenance_href}">Maintenance JSON</a></form>'
-        f'{_maintenance_cards(maintenance)}'
+        f'{_maintenance_cards(maintenance)}{controls}'
         f'<div class="cards">{cards}</div>{"".join(sections)}</main></body></html>'
     )
 
@@ -496,19 +518,34 @@ def build_handler(
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
-            script = "; script-src 'unsafe-inline'" if allow_script else ""
+            script = "; script-src 'unsafe-inline'; connect-src 'self'" if allow_script else ""
             self.send_header(
                 "Content-Security-Policy",
                 f"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'{script}",
             )
 
-        def _send_payload(self, payload: bytes, content_type: str, *, allow_script: bool = False) -> None:
+        def _send_payload(
+            self,
+            payload: bytes,
+            content_type: str,
+            *,
+            allow_script: bool = False,
+        ) -> None:
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self._security_headers(allow_script=allow_script)
             self.end_headers()
             self.wfile.write(payload)
+
+        def _send_json(self, status_code: int, payload: Mapping[str, Any]) -> None:
+            encoded = json.dumps(payload, ensure_ascii=False, default=str).encode()
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self._security_headers()
+            self.end_headers()
+            self.wfile.write(encoded)
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
@@ -525,7 +562,10 @@ def build_handler(
                     changed_only = _parse_bool(
                         params.get("changed_only", [""])[0], name="changed_only"
                     )
-                    if parsed.path in {"/api/operational/graph", "/galaxy/operational"} and not project_id:
+                    if (
+                        parsed.path in {"/api/operational/graph", "/galaxy/operational"}
+                        and not project_id
+                    ):
                         raise ValueError("project_id is required for the operational graph")
                     operational = _operational_payload(
                         storage,
@@ -537,11 +577,21 @@ def build_handler(
                         changed_only=changed_only,
                     )
                     if parsed.path == "/galaxy/operational":
-                        payload = render_galaxy_view(operational, project_id=project_id).encode()
-                        self._send_payload(payload, "text/html; charset=utf-8", allow_script=True)
+                        payload = render_galaxy_view(
+                            operational,
+                            project_id=project_id,
+                        ).encode()
+                        self._send_payload(
+                            payload,
+                            "text/html; charset=utf-8",
+                            allow_script=True,
+                        )
                     else:
                         payload = json.dumps(
-                            operational, ensure_ascii=False, default=str, indent=2
+                            operational,
+                            ensure_ascii=False,
+                            default=str,
+                            indent=2,
                         ).encode()
                         self._send_payload(payload, "application/json; charset=utf-8")
                     return
@@ -554,7 +604,10 @@ def build_handler(
                         project_id=project_id,
                     )
                     payload = json.dumps(
-                        maintenance, ensure_ascii=False, default=str, indent=2
+                        maintenance,
+                        ensure_ascii=False,
+                        default=str,
+                        indent=2,
                     ).encode()
                     self._send_payload(payload, "application/json; charset=utf-8")
                     return
@@ -571,7 +624,10 @@ def build_handler(
                         owner_id=owner_id,
                     )
                     payload = json.dumps(
-                        table_page, ensure_ascii=False, default=str, indent=2
+                        table_page,
+                        ensure_ascii=False,
+                        default=str,
+                        indent=2,
                     ).encode()
                     self._send_payload(payload, "application/json; charset=utf-8")
                     return
@@ -612,7 +668,8 @@ def build_handler(
                     content_type = "application/json; charset=utf-8"
                 elif parsed.path == "/galaxy":
                     payload = render_galaxy_view(
-                        _build_graph(snapshot, project_id, query, limit), project_id=project_id
+                        _build_graph(snapshot, project_id, query, limit),
+                        project_id=project_id,
                     ).encode()
                     content_type = "text/html; charset=utf-8"
                     allow_script = True
@@ -634,6 +691,7 @@ def build_handler(
                         }
                     payload = render_dashboard(snapshot, maintenance).encode()
                     content_type = "text/html; charset=utf-8"
+                    allow_script = True
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
@@ -641,6 +699,51 @@ def build_handler(
                 self.send_error(HTTPStatus.BAD_REQUEST, str(exc))
                 return
             self._send_payload(payload, content_type, allow_script=allow_script)
+
+        def do_POST(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self._send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "status": "error",
+                        "error": "invalid_content_length",
+                        "message": "Content-Length must be an integer.",
+                    },
+                )
+                return
+            if content_length < 0:
+                self._send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "status": "error",
+                        "error": "invalid_content_length",
+                        "message": "Content-Length cannot be negative.",
+                    },
+                )
+                return
+            if content_length > MAX_ACTION_BODY_BYTES:
+                self._send_json(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    {
+                        "status": "error",
+                        "error": "body_too_large",
+                        "message": "Maintenance action body is too large.",
+                    },
+                )
+                return
+            body = self.rfile.read(content_length)
+            status_code, result = dispatch_maintenance_action(
+                storage,
+                path=parsed.path,
+                headers=dict(self.headers.items()),
+                body=body,
+                owner_id=owner_id,
+                backup_directory=backup_directory,
+            )
+            self._send_json(status_code, result)
 
         def log_message(self, _format: str, *_args: object) -> None:
             return
