@@ -11,13 +11,18 @@ from .retention import (
     ALLOWED_MEMORY_TYPES,
     ConfirmationError,
     ForgetPlan,
+    USED_CONFIRMATION_FINGERPRINTS,
+    assert_confirmation_unused,
     build_forget_plan,
     create_confirmation_token,
+    mark_confirmation_used,
     select_retention_candidates,
     validate_confirmation_token,
 )
 
-_USED_PLAN_FINGERPRINTS: set[str] = set()
+# Backward-compatible alias retained for existing tests/importers while the
+# consumed-fingerprint set is now shared with Dashboard maintenance actions.
+_USED_PLAN_FINGERPRINTS = USED_CONFIRMATION_FINGERPRINTS
 
 
 def _replace_registered_tool(server: Any, name: str, function: Callable[..., Any]) -> None:
@@ -187,8 +192,7 @@ def install_confirmed_deletion(server_module: Any) -> tuple[Callable[..., Any], 
             resolved_owner = owner_id or os.getenv("OWNER_ID", "default-owner")
             if parsed.owner_id != resolved_owner:
                 raise PermissionError("plan owner does not match the active owner")
-            if parsed.fingerprint in _USED_PLAN_FINGERPRINTS:
-                raise ConfirmationError("confirmation token has already been used")
+            assert_confirmation_unused(parsed.fingerprint)
             validate_confirmation_token(parsed, confirmation_token)
 
             current = server_module._table_select(
@@ -210,7 +214,7 @@ def install_confirmed_deletion(server_module: Any) -> tuple[Callable[..., Any], 
                 owner_id=parsed.owner_id,
                 project_id=parsed.project_id,
             )
-            _USED_PLAN_FINGERPRINTS.add(parsed.fingerprint)
+            mark_confirmation_used(parsed.fingerprint)
             server_module._record_timeline(
                 client,
                 parsed.project_id,
