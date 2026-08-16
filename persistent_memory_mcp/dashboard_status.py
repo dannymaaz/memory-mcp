@@ -111,7 +111,6 @@ class DashboardStatusService:
         except HealthError as exc:
             raise DashboardStatusError(str(exc)) from exc
 
-        health_dict = health.as_dict()
         payload = {
             "status": health.status,
             "owner_configured": True,
@@ -141,8 +140,6 @@ class DashboardStatusService:
             "sensitivity": sensitivity,
             "read_only": True,
         }
-        # Do not leak any accidental path-like fields added by future HealthResult changes.
-        del health_dict
         return redact_sensitive_value(payload).value
 
     @staticmethod
