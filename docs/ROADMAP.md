@@ -9,7 +9,7 @@ This document mirrors the canonical roadmap maintained in Notion.
 - ✅ **Complete** — implemented, integrated, documented and validated by the required gate.
 - 🟡 **In review** — repository work exists but a publication, final-head gate or external handoff remains.
 - ⬜ **Planned** — sequenced work not started yet.
-- ⛔ **Externally blocked** — repository work is ready but completion depends on external account configuration.
+- ⛔ **Externally blocked** — repository work is ready but completion depends on external account/UI configuration.
 - 🚫 **Out of scope** — intentionally excluded from the product direction.
 
 ## Delivered foundation
@@ -84,61 +84,95 @@ See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 **Gate:** Quality #346  
 **Merge:** `f85b4d691ce1716b20ad7a49a02ca62227d03614`
 
-PR #80 completed the first incremental architecture slice without rewriting the legacy server or changing public MCP contracts.
-
-Delivered:
-
-- `create_application(settings)` as the explicit runtime composition root;
-- one shared idempotent `ToolRegistry` for dynamic MCP registration/replacement;
-- deterministic initialization order exposed and covered by regression tests;
-- Confirmed Deletion and Verified Restore/Maintenance migrated away from duplicated FastMCP registry mutation helpers;
-- repeated construction/registration guarded against duplicate tools;
-- registration failures made explicit instead of silently dropping required tools;
-- current local-first scope, storage schema, destructive confirmation semantics and public tool names/signatures preserved.
-
-Quality #346 passed Ubuntu/Windows/macOS × Python 3.11–3.13, lint/tests, agent regressions, token accounting, release-artifact/upgrade validation and dependency audit before merge.
+Delivered `create_application(settings)` as the explicit runtime composition root, one shared idempotent `ToolRegistry`, deterministic initialization order and migration of Confirmed Deletion + Verified Restore away from duplicated registry mutation helpers. Public tool contracts, local-first scope and destructive confirmation semantics were preserved.
 
 See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
 
-## Distribution / publication — 🟡 In review
+### MCP SDK v1 compatibility boundary — ✅ Complete
+
+**GitHub:** Issue #81 / PR #85  
+**Gate:** Quality #360  
+**Merge:** `df854b6ff28c12aeb47a7bd53bed84429dcbc58c`
+
+The current server implementation is explicitly constrained to `mcp>=1.28,<2`. Regression tests prove packaged runtime uses the installed `mcp.server.fastmcp.FastMCP` instead of silently selecting the local fallback, and validate Tool Registry registration/replacement against that installed implementation.
+
+A deliberate migration to MCP v2 `MCPServer` is tracked separately in Issue #88 and must preserve public tools/stdio before the `<2` upper bound is removed.
+
+See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
+
+## Distribution / publication — 🟡 Repository ready; external release steps remain
 
 **Notion:** MEM-17 + MEM-33  
 **GitHub:** Issue #53
 
-The **v0.3.0 release candidate preparation is complete**, but publication itself is not complete.
+Repository-side preparation for v0.3.0 is now complete, but the actual public release is not.
 
-Verified repository state on 2026-08-16:
+### Immutable release source
 
-- package metadata is `0.3.0`;
-- release preparation PR #54 is merged;
-- the validated release merge commit is `4dc160c1fdf0e2858337239c42c9085fe8097493`;
-- that release commit contains the tag-triggered `Release artifacts` workflow;
-- the final PR #54 head passed Quality #209;
-- upgrade/rollback/release documentation and checksum tooling are present;
-- **no `v0.3.0` tag currently exists in GitHub**;
-- **no GitHub Release currently exists**;
-- **no PyPI Trusted Publishing workflow currently exists in `main`**.
+The original prepared candidate `4dc160c1fdf0e2858337239c42c9085fe8097493` was superseded because its MCP dependency could resolve to v2 while the release code uses the v1 FastMCP API.
 
-Required controlled sequence:
+Release-only PR #89 applied only the required MCP compatibility repair to the isolated v0.3.0 branch and passed Quality #361. The **only valid tag target** is:
 
-1. create `v0.3.0` from the validated release commit `4dc160c…`, not from current post-v0.3 `main`;
-2. require the tag workflow to build and validate wheel/sdist/`SHA256SUMS` successfully;
-3. create the GitHub Release from that exact bundle;
-4. add and validate a PyPI Trusted Publishing path that publishes those exact artifacts rather than rebuilding them;
-5. configure the repository/account Trusted Publisher in PyPI;
-6. publish and smoke-test `persistent-memory-mcp==0.3.0` from PyPI;
-7. submit the stable package/release metadata to MCP Registry;
-8. synchronize final publication evidence in GitHub docs and Notion.
+```text
+9e0a084dd9b179612082edef99e1c3c9bf563ffa
+```
 
-The PyPI account trust relationship is an external dependency, but the missing tag/GitHub Release and missing publication workflow are repository/release tasks and must not be mislabeled as already complete.
+Do not tag current `main` and do not tag the older `4dc160c…` candidate.
 
-MEM-17 still needs a product-scope decision separating optional Docker/deployment documentation from the local-first core.
+### Repository-side publication path — ✅ Complete
 
-See [RELEASING.md](RELEASING.md) and [UPGRADING.md](UPGRADING.md).
+PR #91 passed exact-head Quality #368 and merged as `9f43944266b50706d6cb94809362b00d0c569017`.
 
-## Repository maintenance — ⬜ Planned cleanup
+`main` now contains the guarded manual PyPI Trusted Publishing workflow. It requires:
 
-PR #74 contains useful `SECURITY.md` and Dependabot configuration but is based on an obsolete branch and is conflictive. Do not merge it as-is. Recreate the security policy and weekly pip/GitHub Actions dependency automation from current `main`, validate them, then close the stale PR.
+- input tag exactly `v0.3.0`;
+- a non-draft/non-prerelease GitHub Release;
+- that tag to resolve exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+- wheel, sdist and `SHA256SUMS` downloaded from that GitHub Release rather than rebuilt;
+- checksum, package-version and `twine check` verification;
+- OIDC publication with `id-token: write` isolated to the `pypi` environment job.
+
+See [RELEASING.md](RELEASING.md).
+
+### Remaining controlled release sequence
+
+As verified through the GitHub API on 2026-08-16, **no `v0.3.0` tag and no GitHub Release currently exist**.
+
+Remaining steps:
+
+1. create annotated `v0.3.0` from `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+2. require the tag-triggered Release artifacts workflow to build/validate wheel, sdist and `SHA256SUMS`;
+3. verify the retained bundle;
+4. create the GitHub Release from those exact artifacts;
+5. configure PyPI Trusted Publisher for `dannymaaz/memory-mcp`, workflow `publish-pypi.yml`, environment `pypi`;
+6. run the guarded manual publication workflow;
+7. smoke-test `persistent-memory-mcp==0.3.0` from public PyPI in a clean environment;
+8. submit stable public package/release metadata to MCP Registry;
+9. synchronize final public-release evidence in GitHub docs and Notion.
+
+The first four remaining items require actual release/tag state; PyPI trust configuration is an external account/UI dependency. None should be documented as complete without direct evidence.
+
+MEM-17 keeps Docker/Render/Railway-style deployments optional/self-managed; they are not blockers for the local-first core.
+
+## Repository maintenance — ✅ Current baseline complete
+
+PR #83 recreated the useful security-maintenance work from current `main` and superseded stale PR #74.
+
+Delivered:
+
+- `SECURITY.md` aligned to the local-first threat model and private vulnerability reporting;
+- weekly Dependabot updates for Python and GitHub Actions;
+- grouped dependency update PRs to reduce maintenance noise.
+
+PR #74 is closed and must not be revived or force-merged.
+
+## Planned architecture follow-up
+
+### MCPServer v2 migration — ⬜ Planned
+
+**GitHub:** Issue #88
+
+Migrate the v1 `FastMCP` runtime deliberately to MCP v2 `MCPServer`, adapt Tool Registry to supported v2 registration APIs, preserve stdio/public tool contracts and remove the temporary `<2` bound only after the full cross-platform and release-artifact gates pass.
 
 ## Product scope decision — 🚫 No collaborative SaaS
 
@@ -166,7 +200,7 @@ A roadmap item is not complete until:
 
 ## Current recommended order
 
-1. Finish **MEM-33 / Issue #53** from the exact validated v0.3.0 release commit: tag → artifact gate → GitHub Release → PyPI Trusted Publishing → public smoke test → MCP Registry.
-2. Recreate the useful **security policy + Dependabot** changes from stale PR #74 on current `main`, then retire the stale branch/PR.
-3. Reconcile **MEM-17 distribution scope**, keeping optional deployment/Docker documentation separate from the local-first core.
-4. Start no new numbered product phase until the release/distribution state and roadmap source of truth are coherent.
+1. Complete **MEM-33 / Issue #53** using only release target `9e0a084…`: tag → artifact gate → GitHub Release → Trusted Publishing → public smoke test → MCP Registry.
+2. Reconcile **MEM-17 distribution scope** only for optional/self-managed deployment documentation; it does not block v0.3.0.
+3. After the public v0.3.0 release is stable, schedule **Issue #88 MCPServer v2 migration** as a separate compatibility project.
+4. Start no new numbered product phase until final release evidence is synchronized across GitHub and Notion.
