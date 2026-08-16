@@ -68,9 +68,10 @@ def _seed(storage: SQLiteStorage) -> str:
         },
     )
 
+    symbols_per_file = FOCUS_SYMBOLS // FOCUS_FILES
     for index in range(FOCUS_SYMBOLS):
         logical_id = f"logical-{index:03d}"
-        file_index = index % FOCUS_FILES
+        file_index = min(index // symbols_per_file, FOCUS_FILES - 1)
         snapshot_id = f"snapshot-{index:03d}"
         storage.insert(
             "code_symbol_snapshots",
