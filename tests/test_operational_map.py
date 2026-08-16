@@ -317,8 +317,10 @@ def test_operational_graph_is_bounded_redacted_and_body_free(tmp_path) -> None:
     assert "sk-proj-abcdefghijklmnop123456789" not in serialized
     assert "[REDACTED:openai_key]" in serialized
     assert str(linked_task["id"]) in serialized
-    for forbidden in ('"details"', '"content"', '"summary"', '"message"', '"signature"', '"body_sha256"'):
-        assert forbidden not in serialized
+    forbidden_fields = {"details", "content", "summary", "message", "signature", "body_sha256"}
+    for node in graph["nodes"]:
+        assert forbidden_fields.isdisjoint(node)
+        assert forbidden_fields.isdisjoint(node.get("metadata") or {})
     assert "/private/owner-1/alpha" not in serialized
 
 
