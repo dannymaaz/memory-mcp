@@ -86,7 +86,20 @@ def _make_server() -> tuple[FakeServerModule, dict[str, list[dict[str, Any]]]]:
             }
         )
 
-    server = SimpleNamespace(_tools={}, tool=lambda **_kwargs: (lambda fn: fn))
+    registered_tools: dict[str, Any] = {}
+
+    def add_tool(function: Any, *, name: str, description: str) -> None:
+        assert description
+        registered_tools[name] = function
+
+    def remove_tool(name: str) -> None:
+        del registered_tools[name]
+
+    server = SimpleNamespace(
+        add_tool=add_tool,
+        remove_tool=remove_tool,
+        registered_tools=registered_tools,
+    )
     module = FakeServerModule(
         server=server,
         TOOL_HANDLERS={},
