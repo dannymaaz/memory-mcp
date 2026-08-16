@@ -11,6 +11,7 @@
   <a href="#progressive-repository-retrieval">Repository retrieval</a> ·
   <a href="#persistent-symbol-provenance-and-evolution">Symbol evolution</a> ·
   <a href="#context-quality-regression-guardrails">Quality gates</a> ·
+  <a href="#operational-project-map-and-risk-oriented-galaxy">Operational map</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -27,7 +28,7 @@ Persistent Memory MCP is an open-source Model Context Protocol server that gives
 
 The product is deliberately personal and local-first: one local installation, private SQLite by default, a localhost-only dashboard and project/owner isolation. Shared team workspaces, public remote dashboards and multi-user role models are outside the product scope.
 
-The post-v0.3 direction goes beyond storing memory. Persistent Memory MCP is evolving into a **Context Compiler**: stored memories and repository evidence are filtered, ranked, compressed, verified and packed under a measurable token budget before they are delivered to an agent.
+The post-v0.3 direction goes beyond storing memory. Persistent Memory MCP acts as a **Context Compiler**: stored memories and repository evidence are filtered, ranked, compressed, verified and packed under a measurable token budget before they are delivered to an agent. The operational map then projects the persisted evidence into a bounded risk-oriented view without loading full project content.
 
 ## Core capabilities
 
@@ -42,6 +43,8 @@ The post-v0.3 direction goes beyond storing memory. Persistent Memory MCP is evo
 | **Progressive repository retrieval** | Expand map → files → symbols → exact fragments instead of loading whole repositories |
 | **Persistent symbol evolution** | Preserve logical symbol identity across commits, moves and safe rename matches with typed evidence |
 | **Context quality regression gates** | Block retrieval, token-budget or provenance/safety regressions with deterministic local CI |
+| **Operational project map** | View owner-scoped project risk, current changes and persisted evidence without loading full bodies |
+| **Risk-oriented Galaxy** | Filter bounded project impact graphs by risk, verification state and current changes |
 | Verified local backup | Create WAL-safe SQLite backups with integrity validation |
 | SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
 | Health diagnostics | Inspect SQLite integrity and maintenance readiness without mutation |
@@ -128,7 +131,7 @@ memory-mcp serve
 
 ## Context Packet and token budgets
 
-The post-v0.3 Context Compiler introduces a stable **Context Packet v1** on the real optimized context-delivery path.
+The Context Compiler exposes a stable **Context Packet v1** on the real optimized context-delivery path.
 
 A packet records:
 
@@ -147,62 +150,40 @@ The packet is budgeted as a complete serialized response, not only as a sum of m
 
 ### Deterministic local fallback
 
-A normal installation does **not** need a provider tokenizer. `deterministic-heuristic-v2` works offline and deterministically. For small context requests (including the existing 256-token contract), the packet switches to a compact control representation while retaining version, objective, sources, verification, token accounting and per-block metrics.
+A normal installation does **not** need a provider tokenizer. `deterministic-heuristic-v2` works offline and deterministically. For small context requests, including the existing 256-token contract, the packet uses a compact control representation while retaining version, objective, sources, verification and token accounting.
 
 ### Optional exact local reference
-
-For model-aware local BPE counting and measurement:
 
 ```bash
 pip install "persistent-memory-mcp[tokenizers]"
 ```
 
-The optional extra uses `tiktoken` when the requested model/encoding is resolvable. If automatic model resolution is unavailable, the product retains the deterministic local fallback rather than requiring a remote service.
+The optional extra uses `tiktoken` when the requested model/encoding is resolvable. If automatic model resolution is unavailable, the product keeps the deterministic local fallback rather than requiring a remote service.
 
-### Reproducible estimator measurements
-
-PR #60 added fixed Spanish and source-code fixtures plus `scripts/evaluate_tokenization.py`.
-
-Validated measurements against `gpt-4o` / `tiktoken:o200k_base`:
+Validated reference measurements against `gpt-4o` / `tiktoken:o200k_base`:
 
 | Fixture | Reference tokens | Deterministic fallback | Error |
 |---|---:|---:|---:|
 | Spanish prose | 69 | 80 | **15.94%** |
 | Python/source code | 138 | 140 | **1.45%** |
 
-The CI guardrail allows at most 40% error on these initial fixtures; the validated worst case is 15.94%. Context Packet/tokenizer reference jobs run on Ubuntu, Windows and macOS in addition to the normal Python 3.11–3.13 matrix.
+Quality #226 passed the complete Ubuntu/Windows/macOS × Python 3.11–3.13 delivery matrix.
 
 ## Progressive repository retrieval
 
-PR #62 / MEM-37 implements the second Context Compiler layer through the real MCP runtime as `retrieve_repository_context`.
+PR #62 / MEM-37 exposes `retrieve_repository_context` through the real MCP runtime. Repository evidence expands progressively:
 
-The retrieval path is intentionally progressive:
-
-1. map supported repository paths with `git ls-files` without reading every file's content;
+1. map supported repository paths with `git ls-files` without reading every file body;
 2. rank candidate files using path evidence plus bounded local `git grep` signals;
-3. parse symbols only from the bounded candidate set using the existing Python/TypeScript/JavaScript/SQL code-intelligence parsers;
+3. parse symbols only from the bounded candidate set using the existing Python/TypeScript/JavaScript/SQL parsers;
 4. expand bounded graph neighbors;
-5. read only the selected symbol fragments and return exact line ranges instead of whole files.
+5. return exact selected line fragments instead of whole files.
 
-Every returned fragment carries repository-relative path, start/end lines, fragment SHA-256, whole-file SHA-256 and Git commit/ref provenance. Recognized secrets are redacted before fragment content leaves the retrieval service.
+Every fragment carries repository-relative path, line range, fragment SHA-256, file SHA-256 and Git commit/ref provenance. Recognized secrets are redacted before fragment content leaves the retrieval service.
 
-### Retrieval safety and limits
+The service rejects traversal/root escape, applies configured ignore patterns, never executes repository code and enforces explicit map/file/symbol/neighbor/byte/page/token limits. Cursor fingerprints include query, Git commit and candidate-file hashes so relevant committed or dirty changes invalidate stale cursors.
 
-The retrieval service:
-
-- rejects absolute paths, traversal and resolved paths outside the repository root;
-- applies `RuntimeSettings.ignore_patterns` together with existing code-intelligence excludes;
-- never executes repository code;
-- limits mapped files, parsed files, symbols, graph neighbors, file bytes, total fragment bytes, fragment lines, page size and token budget;
-- binds pagination cursors to the query, commit and hashes of ranked candidate files so committed or relevant dirty-working-tree changes invalidate stale cursors;
-- uses the same Context Packet token-counter contract instead of a separate estimator;
-- trims low-priority retrieval payload sections until the final serialized response fits the requested token budget, and fails closed if mandatory control metadata alone cannot fit.
-
-### Reproducible progressive-retrieval measurement
-
-`scripts/evaluate_repository_retrieval.py` creates a deterministic synthetic repository and verifies that retrieval remains bounded.
-
-Validated PR #62 measurement:
+Reproducible PR #62 measurement:
 
 | Metric | Result |
 |---|---:|
@@ -211,69 +192,46 @@ Validated PR #62 measurement:
 | Repository parse fraction | **7.5%** |
 | Selected fragments | **2** |
 | Fragment bytes emitted | **284 B** |
-| Target file lines | **125** |
-| Target fragment lines | **7** |
 | Target fragment / file ratio | **5.6%** |
 | Final retrieval tokens | **1,305 / 1,400** |
 
-The top ranked file and top fragment are both the intended `services/security.py` target. The evaluation is executed in CI on Ubuntu, Windows and macOS alongside the Context Packet reference jobs.
-
 ## Persistent symbol provenance and evolution
 
-PR #64 / MEM-38 adds the third mandatory Context Compiler layer for local SQLite installations. It persists code-symbol history by Git commit instead of treating the current parser output as timeless truth.
+PR #64 / MEM-38 persists code-symbol history by Git commit instead of treating current parser output as timeless truth.
 
 The symbol-evolution contract:
 
-1. captures only a **clean Git HEAD** and refuses a dirty working tree;
-2. stores one idempotent snapshot run per owner/project/repository/commit;
-3. persists bounded, redacted signatures plus signature/body/file SHA-256 values — not source bodies;
-4. compares the current snapshot to the nearest persisted Git ancestor;
-5. classifies symbols as `added`, `modified`, `moved`, `renamed`, `deleted` or `unchanged`;
-6. preserves a stable `logical_id` across exact moves and conservative, unique rename matches;
-7. records typed evidence to files, commits and detected tests, and supports explicitly validated links to project decisions/tasks;
-8. keeps evidence history when a link becomes `stale`, `contradicted`, `missing_source` or `unverified` instead of deleting it;
-9. bounds history output with the same Context Packet token-counter contract.
+1. captures only a **clean Git HEAD**;
+2. stores one idempotent run per owner/project/repository/commit;
+3. persists bounded/redacted signatures plus signature/body/file hashes — not source bodies;
+4. compares against the nearest persisted Git ancestor;
+5. classifies `added`, `modified`, `moved`, `renamed`, `deleted` and `unchanged`;
+6. preserves stable `logical_id` across exact moves and conservative unique rename matches;
+7. records typed evidence to files, commits and tests, plus explicitly validated project decisions/tasks;
+8. preserves evidence history when it becomes `stale`, `contradicted`, `missing_source` or `unverified`;
+9. bounds history output with the Context Packet token-counter contract.
 
-Rename matching is deliberately fail-safe. Exact qualified-name/body matches are preferred; a name-only rename may retain identity only when its normalized bounded signature is unique on both sides. Ambiguous candidates remain separate identities rather than being merged speculatively.
+SQLite schema v2 adds `code_symbol_snapshot_runs`, `code_symbol_snapshots`, `code_symbol_changes` and `code_symbol_links`. Existing local databases receive migration `0002` through preview → verified backup → transactional apply.
 
-SQLite schema v2 adds `code_symbol_snapshot_runs`, `code_symbol_snapshots`, `code_symbol_changes` and `code_symbol_links`. Existing local databases receive migration `0002` through the normal preview → verified backup → transactional apply path. Fresh databases bootstrap migrations 1 and 2 directly.
-
-### Reproducible symbol-evolution measurement
-
-`scripts/evaluate_symbol_evolution.py` builds a deterministic two-commit repository containing Python, TypeScript, JavaScript and SQL, then captures and compares both commits.
-
-The reference evaluation asserts all of the following:
-
-| Check | Expected result |
-|---|---:|
-| Languages observed | **Python, TypeScript, JavaScript, SQL** |
-| Rename preserves logical identity | **true** |
-| Rename classified | **≥ 1** |
-| Move classified | **≥ 1** |
-| Modification classified | **≥ 1** |
-| Current renamed symbol state | **verified** |
-
-The validated delivery classified **1 renamed, 1 moved and 2 modified** symbols while preserving the renamed Python symbol's `logical_id`. Quality #250 passed the exact PR #64 HEAD across Ubuntu, Windows and macOS, Python 3.11–3.13, release-artifact upgrade and dependency audit. PR #64 / MEM-38 are complete.
+The reference evaluation covers Python, TypeScript, JavaScript and SQL and validated **1 renamed, 1 moved and 2 modified** symbols while preserving rename identity. Quality #250 passed the exact PR #64 HEAD.
 
 ## Context quality regression guardrails
 
-PR #66 / MEM-39 adds the fourth mandatory Context Compiler layer: deterministic local gates for retrieval quality, hard budget behavior and evidence safety.
+PR #66 / MEM-39 completed the fourth mandatory Context Compiler layer with deterministic local gates for retrieval quality, hard budget behavior and evidence safety. Quality #262 passed the exact final HEAD.
 
-The quality suite uses a versioned, non-sensitive coding-task corpus and the **real** `ProgressiveRepositoryRetriever` path. Every evaluation records fixture/evaluator/threshold version, tokenizer identity and model identity when applicable.
-
-Metrics include:
+The versioned non-sensitive corpus measures:
 
 - file recall@5 and precision@5;
 - symbol recall@8 and precision@8;
 - hard token-fit rate;
 - token savings against a deterministic supported-repository baseline;
-- provenance coverage for expected evidence;
+- provenance coverage;
 - maximum task latency;
 - hard safety pass rate.
 
-Initial deterministic v1 baseline and gates:
+Initial v1 baseline and gates:
 
-| Metric | Observed baseline | CI gate |
+| Metric | Baseline | CI gate |
 |---|---:|---:|
 | File recall@5 | **1.000** | ≥ **1.000** |
 | File precision@5 | **0.200** | ≥ **0.200** |
@@ -283,22 +241,8 @@ Initial deterministic v1 baseline and gates:
 | Token savings | **0.7722** | ≥ **0.400** |
 | Provenance coverage | **1.000** | ≥ **1.000** |
 | Safety pass rate | **1.000** | ≥ **1.000** |
-| Maximum task latency | **~149 ms** on first reference run | ≤ **20,000 ms** |
 
-The initial precision floors protect the current baseline; they are not claims that ranking is already optimal. Retrieval improvements may raise them, but recall, hard budget, provenance and safety cannot regress silently.
-
-Hard adversarial gates require all of the following:
-
-- expired memory is excluded;
-- prompt-injection/untrusted memory is excluded by default;
-- relevant dirty repository changes invalidate stale retrieval cursors;
-- a uniquely supported rename preserves logical symbol identity and is classified as a rename;
-- contradicted evidence remains retained and visibly contradicted;
-- dirty Git state marks previously current symbol evidence `stale`.
-
-Unit tests also deliberately degrade recall, token fit, savings, provenance, safety and latency and require threshold evaluation to fail. The reference Quality jobs run the quality evaluator and adversarial evaluator on Ubuntu, Windows and macOS.
-
-To reproduce locally from a development checkout:
+Hard adversarial gates cover expired/untrusted memory, prompt injection, dirty cursor invalidation, rename identity continuity, contradicted evidence and dirty-Git stale evidence. Unit tests deliberately degrade recall, budget, savings, provenance, safety and latency and require threshold evaluation to fail.
 
 ```bash
 pip install -e ".[tokenizers]"
@@ -306,7 +250,87 @@ python scripts/evaluate_context_quality.py
 python scripts/evaluate_context_adversarial.py
 ```
 
-See [docs/CONTEXT_QUALITY.md](docs/CONTEXT_QUALITY.md) for the public evaluation contract, thresholds and interpretation.
+See [docs/CONTEXT_QUALITY.md](docs/CONTEXT_QUALITY.md).
+
+## Operational project map and risk-oriented Galaxy
+
+PR #68 / MEM-40 adds a bounded operational projection over the existing SQLite project state and persisted code-symbol evidence. It does **not** add another repository scanner or graph database.
+
+`OperationalMapService` provides:
+
+- a global owner-scoped project overview;
+- a per-project impact graph;
+- project → repository → file → symbol relationships;
+- verified symbol links to task/decision/file/test/deployment evidence where persisted;
+- active tasks, blocked work and warnings;
+- explicit `verified`, `stale`, `contradicted`, `missing_source` and `unverified` states;
+- compact `critical`, `high`, `medium`, `low`, `none` risk projection;
+- `changed_only` based only on the latest persisted snapshot run for each repository.
+
+The changed-area view keeps changed files/symbols, their direct evidence neighbors and only the hierarchy needed to understand them. It does not fan out from a project node into unrelated work.
+
+### Owner isolation and localhost endpoints
+
+Operational owner resolution fails closed:
+
+1. configured `--owner-id` / `OWNER_ID` wins;
+2. without configuration, infer only when exactly one project owner exists;
+3. zero or multiple owners are rejected instead of mixed.
+
+New read-only localhost endpoints:
+
+```text
+GET /api/operational/projects
+GET /api/operational/graph?project_id=<id>
+GET /api/operational/export.json?project_id=<id>
+GET /galaxy/operational?project_id=<id>
+```
+
+Project graphs support `verification`, `risk` and `changed_only` filters. Existing Dashboard/Galaxy endpoints remain compatible.
+
+Operational payloads are deliberately compact: no full source/signature bodies, decision/task details, session/checkpoint bodies or absolute repository roots. Short display labels pass through the existing secret-redaction logic.
+
+### Risk-oriented Galaxy
+
+Operational Galaxy reuses the dependency-free renderer and adds:
+
+- risk filter;
+- verification-state filter;
+- changed-only filter;
+- visible critical/high/medium, stale and contradicted states;
+- changed/missing/risk/verification summary counts;
+- separate operational SVG/PNG exports;
+- existing drag, zoom, focus, minimap and keyboard/ARIA behavior.
+
+### Reproducible bounds and latency gate
+
+`scripts/evaluate_operational_map.py` is wired into the Ubuntu/Windows/macOS reference CI jobs. Its local non-sensitive fixture contains 20 active-owner projects plus one foreign-owner project, 120 symbols across 12 files and 20 tasks.
+
+Structural output:
+
+| Metric | Result |
+|---|---:|
+| Overview projects | **20** |
+| Full graph nodes | **154** |
+| Full graph edges | **173** |
+| Changed-area nodes | **55** |
+| Changed-area edges | **74** |
+
+Observed reference latency:
+
+| Platform | Overview | Full graph | Changed-area graph |
+|---|---:|---:|---:|
+| Ubuntu | **3.04 ms** | **6.26 ms** | **4.35 ms** |
+| Windows | **4.99 ms** | **8.08 ms** | **5.36 ms** |
+| macOS | **5.65 ms** | **8.56 ms** | **4.15 ms** |
+
+These are regression-fixture observations, not a production SLA. CI uses a deliberately non-flaky 5,000 ms ceiling and also requires owner isolation, hard bounds, read-only output, secret redaction, no absolute repository root, no full body fields and a genuinely reduced changed-area graph.
+
+```bash
+python scripts/evaluate_operational_map.py
+```
+
+See [docs/OPERATIONAL_MAP.md](docs/OPERATIONAL_MAP.md) for the complete public contract.
 
 ## Upgrading from 0.2.0
 
@@ -326,8 +350,6 @@ memory-mcp-migrate --env ~/.memory-mcp/.env --apply --yes
 
 The apply step creates a verified pre-migration backup before mutation. Keep that backup and JSON manifest until the upgraded installation has been verified.
 
-Post-v0.3 development may add later numbered migrations. The same command previews every pending version and applies it only after explicit confirmation and a verified backup.
-
 See [docs/UPGRADING.md](docs/UPGRADING.md) for the complete upgrade and rollback procedure.
 
 ## Natural-language examples
@@ -339,10 +361,10 @@ Find validate_token and return only the relevant source fragment with provenance
 Show the repository files and symbols relevant to the session implementation.
 Capture the clean HEAD and persist how its symbols changed from the previous snapshot.
 Show the history of finalize_order and whether its evidence is current, stale or contradicted.
-Compare persisted symbol changes between these two commits.
+Show which projects have stale or contradicted evidence.
+Show the current affected area for this project without unrelated tasks.
+Open the operational Galaxy for this project and filter to high-risk nodes.
 Save the architecture decision we just made.
-Show active warnings before changing authentication.
-Search project memory for the database migration decision.
 Preview deleting these completed task records.
 Preview restoring this verified SQLite backup.
 ```
@@ -361,9 +383,11 @@ MCP client C ─────┘                                      │
                                                          └─ Context Packet compiler
                                                                   │
                                                                   └─ bounded agent context
+
+localhost Dashboard/Galaxy ── OperationalMapService ── persisted project/Git/symbol evidence
 ```
 
-The server resolves project context, retrieves structured memory/evidence, rejects expired or unsafe records, ranks what matters for the current intent, progressively expands repository evidence only as needed and compiles the result under a hard budget. Persisted symbol snapshots let later sessions distinguish verified current source from historical, contradicted or missing evidence. CI quality gates protect the measured retrieval, token-budget and provenance behavior from silent regressions.
+The MCP path resolves project context, rejects expired or unsafe records, ranks what matters for the current intent, progressively expands repository evidence and compiles the result under a hard token budget. The dashboard path is separate and read-only: it projects persisted evidence state into bounded operational views without independently re-running live Git verification on every request.
 
 ## Main MCP tools
 
@@ -372,39 +396,40 @@ The server resolves project context, retrieves structured memory/evidence, rejec
 | `resume_project` | Return a concise continuation brief |
 | `capture_project_memory` | Save decisions, tasks, warnings, files and state together |
 | `search_semantic_memory` | Search project memory by meaning with lexical fallback |
-| `load_unified_context` | Return optimized project context through the Context Packet delivery path |
-| `retrieve_repository_context` | Retrieve bounded repository map/file/symbol/fragment evidence with provenance and token limits |
-| `capture_symbol_snapshot` | Persist the current clean Git HEAD symbol snapshot and classified evolution |
-| `get_symbol_history` | Return bounded snapshots, changes, links and current verification state for a logical symbol |
-| `compare_symbol_commits` | Compare classified symbol changes between two persisted commits |
-| `link_symbol_memory` | Link a logical symbol to a validated decision or task in the same owner/project scope |
-| `invalidate_symbol_evidence` | Mark symbol evidence stale/contradicted/missing/unverified without deleting history |
+| `load_unified_context` | Return optimized project context through the Context Packet path |
+| `retrieve_repository_context` | Retrieve bounded repository map/file/symbol/fragment evidence |
+| `capture_symbol_snapshot` | Persist the current clean Git HEAD symbol snapshot and evolution |
+| `get_symbol_history` | Return bounded history, links and current evidence state |
+| `compare_symbol_commits` | Compare classified symbol changes between persisted commits |
+| `link_symbol_memory` | Link a logical symbol to a validated decision/task |
+| `invalidate_symbol_evidence` | Mark evidence stale/contradicted/missing/unverified without deleting history |
 | `save_cross_interface_decision` | Preserve technical decisions across compatible local clients |
 | `update_task_status` | Track work across sessions and clients |
 | `sync_session_state` | Save current working state |
 | `export_memory_bundle` | Export memory as JSON or Markdown |
-| `plan_memory_deletion` | Preview exact deletion candidates and issue a short-lived confirmation |
-| `execute_memory_deletion` | Execute only an unchanged, scoped and confirmed deletion plan |
+| `plan_memory_deletion` | Preview exact deletion candidates and issue a confirmation |
+| `execute_memory_deletion` | Execute only an unchanged confirmed deletion plan |
 | `plan_memory_restore` | Preview a verified SQLite restore |
-| `execute_memory_restore` | Execute only the unchanged confirmed restore after a safety backup |
+| `execute_memory_restore` | Execute an unchanged confirmed restore after safety backup |
 
 Operational CLI commands include `memory-mcp init`, `doctor`, `status`, `health`, `serve` and `memory-mcp-migrate`.
 
 ## Data-safety model
 
-Persistent Memory MCP uses explicit, fail-closed maintenance and context contracts:
+Persistent Memory MCP uses explicit fail-closed contracts:
 
 - backups use SQLite's backup API rather than copying a live file;
 - successful backups must pass integrity validation;
-- manifests include SHA-256 and bounded structural metadata, not stored memory contents;
+- manifests include SHA-256 and bounded structural metadata, not memory contents;
 - health diagnostics are read-only;
-- restore uses plan → explicit confirmation → fresh safety backup → atomic replacement → validation → rollback on failure;
-- migrations use read-only preview and verified pre-migration backup before explicit apply;
+- restore uses plan → confirmation → safety backup → atomic replacement → validation → rollback;
+- migrations use read-only preview and verified backup before explicit apply;
 - startup refuses stale existing schemas rather than automigrating;
 - deletion/retention uses exact plan fingerprints and short-lived confirmation;
-- repository retrieval is local/read-only, root-contained, ignored-path aware and fragment-bounded;
-- persistent symbol capture requires a clean HEAD, stores hashes/bounded metadata instead of source bodies and refuses speculative ambiguous rename matches;
-- Context Compiler quality gates require full token fit/provenance/safety and explicitly fail on stale/poisoned evidence scenarios;
+- repository retrieval is local/read-only, root-contained and fragment-bounded;
+- persistent symbol capture requires a clean HEAD and refuses ambiguous speculative rename matches;
+- Context Compiler quality gates fail on retrieval/budget/provenance/safety regressions;
+- operational maps are owner-scoped, bounded, read-only and body-free;
 - context-managed SQLite handles close deterministically after commit/rollback semantics.
 
 ## Privacy and product scope
@@ -412,29 +437,30 @@ Persistent Memory MCP uses explicit, fail-closed maintenance and context contrac
 - SQLite is the default local persistence backend.
 - The dashboard binds to localhost only.
 - Reads/writes are scoped by project and local owner identity.
-- Sensitive values are redacted before persistence and recognized secrets are redacted from emitted repository fragments.
-- Context compilation, repository retrieval and symbol-history capture do not execute repository code.
-- Quality evaluation uses synthetic non-sensitive fixtures and no remote telemetry/provider calls.
-- Optional exact token measurement runs locally; the fallback is provider-free.
+- Operational owner inference is allowed only for a single-owner local database; ambiguous databases fail closed.
+- Sensitive values are redacted before persistence and recognized secrets are redacted from emitted repository fragments and operational labels.
+- Context compilation, repository retrieval, symbol-history capture and operational-map rendering do not execute repository code.
+- Quality/performance evaluation uses synthetic non-sensitive fixtures and no remote telemetry/provider calls.
 - Team memberships, shared roles, billing and public collaborative dashboards are out of scope.
 
 ## Roadmap
 
-The mandatory post-v0.3 order is:
+The mandatory post-v0.3 sequence is:
 
-1. ✅ **Context Packet + model-aware token accounting** — PR #60 / MEM-36 complete.
-2. ✅ **Progressive repository retrieval** — PR #62 / MEM-37 complete.
-3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / MEM-38 complete; Quality #250 green.
-4. 🟡 **Context-quality regression guardrails** — PR #66 / MEM-39 in review with deterministic thresholds and adversarial gates.
-5. **Operational project map / Galaxy** built on verified retrieval/provenance/quality data.
+1. ✅ **Context Packet + model-aware token accounting** — PR #60 / MEM-36 / Quality #226.
+2. ✅ **Progressive repository retrieval** — PR #62 / MEM-37 / Quality #235.
+3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / MEM-38 / Quality #250.
+4. ✅ **Context-quality regression guardrails** — PR #66 / MEM-39 / Quality #262.
+5. 🟡 **Operational project map / risk-oriented Galaxy** — PR #68 / MEM-40 in review.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria, sequencing rules and current evidence.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria, sequencing and current evidence.
 
 ## Documentation
 
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Delivery roadmap](docs/ROADMAP.md)
 - [Context Compiler quality evaluation](docs/CONTEXT_QUALITY.md)
+- [Operational project map and Galaxy](docs/OPERATIONAL_MAP.md)
 - [Changelog](CHANGELOG.md)
 - [Upgrade and rollback](docs/UPGRADING.md)
 - [Release operator checklist](docs/RELEASING.md)
