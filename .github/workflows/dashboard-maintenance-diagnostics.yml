@@ -8,17 +8,29 @@ permissions:
   contents: read
 
 jobs:
-  status-case:
-    name: Status · ${{ matrix.test }}
+  status-probe:
+    name: Status probe · ${{ matrix.check }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        test:
-          - test_status_composes_health_storage_verification_and_sensitivity
-          - test_status_detects_latest_verified_backup_without_exposing_paths
-          - test_status_is_owner_scoped
-          - test_status_fails_closed_when_owner_is_ambiguous
+        check: [health, verification, sensitivity, paths]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Run probe
+        run: python scripts/dashboard_status_probe.py ${{ matrix.check }}
+
+  status-remaining:
+    name: Remaining status tests
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,8 +42,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio
-      - name: Run status case
-        run: pytest -q tests/test_dashboard_status.py::${{ matrix.test }}
+      - name: Run remaining status tests
+        run: >-
+          pytest -q
+          tests/test_dashboard_status.py::test_status_detects_latest_verified_backup_without_exposing_paths
+          tests/test_dashboard_status.py::test_status_is_owner_scoped
+          tests/test_dashboard_status.py::test_status_fails_closed_when_owner_is_ambiguous
 
   http-ui:
     name: Dashboard HTTP and UX
