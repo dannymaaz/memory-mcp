@@ -8,13 +8,12 @@ ToolCallable = Callable[..., Any]
 
 
 class ToolRegistry:
-    """Keep FastMCP, local dispatch helpers, and schemas in sync.
+    """Keep MCPServer, local dispatch helpers, and schemas in sync.
 
-    Integrations should use this registry instead of mutating FastMCP internals
-    independently. Existing tools are replaced in place when a known registry
-    surface is available; new tools are registered through FastMCP's public
-    ``tool`` decorator. Registration failures are explicit rather than silently
-    ignored.
+    Integrations use this registry instead of mutating MCP SDK internals. MCP v2
+    exposes public ``add_tool`` and ``remove_tool`` methods, so replacements use
+    those APIs directly. The local handler/schema mirrors remain the source of
+    truth for whether a tool is already known to this application.
     """
 
     def __init__(self, server_module: Any) -> None:
@@ -29,60 +28,59 @@ class ToolRegistry:
         description: str,
         function: ToolCallable,
     ) -> ToolCallable:
-        """Register or replace one tool without creating duplicate entries."""
+        """Register or replace one tool without private MCP SDK access."""
         normalized_name = str(name).strip()
         if not normalized_name:
             raise ValueError("tool name must not be empty")
         if not callable(function):
             raise TypeError(f"tool {normalized_name!r} must be callable")
 
-        replaced = self._replace_existing(normalized_name, function)
-        if not replaced:
-            tool_decorator = getattr(self.server, "tool", None)
-            if not callable(tool_decorator):
+        add_tool = getattr(self.server, "add_tool", None)
+        if not callable(add_tool):
+            raise RuntimeError(
+                f"cannot register MCP tool {normalized_name!r}: "
+                "MCPServer.add_tool API is unavailable"
+            )
+
+        if self._is_known(normalized_name):
+            remove_tool = getattr(self.server, "remove_tool", None)
+            if not callable(remove_tool):
                 raise RuntimeError(
-                    f"cannot register MCP tool {normalized_name!r}: "
-                    "FastMCP tool registration API is unavailable"
+                    f"cannot replace MCP tool {normalized_name!r}: "
+                    "MCPServer.remove_tool API is unavailable"
                 )
             try:
-                tool_decorator(name=normalized_name, description=description)(function)
+                remove_tool(normalized_name)
             except Exception as exc:
                 raise RuntimeError(
-                    f"failed to register MCP tool {normalized_name!r}"
+                    f"failed to remove existing MCP tool {normalized_name!r}"
                 ) from exc
+
+        try:
+            add_tool(function, name=normalized_name, description=description)
+        except Exception as exc:
+            raise RuntimeError(
+                f"failed to register MCP tool {normalized_name!r}"
+            ) from exc
 
         setattr(self.server_module, normalized_name, function)
         self._sync_handler(normalized_name, function)
         self._sync_schema(normalized_name, description)
         return function
 
-    def _replace_existing(self, name: str, function: ToolCallable) -> bool:
-        """Replace an already-registered callable on known FastMCP surfaces."""
-        replaced = False
+    def _is_known(self, name: str) -> bool:
+        """Return whether the application already tracks a registered tool."""
+        handlers = getattr(self.server_module, "TOOL_HANDLERS", None)
+        if isinstance(handlers, dict) and name in handlers:
+            return True
 
-        tools = getattr(self.server, "_tools", None)
-        if isinstance(tools, dict) and name in tools:
-            tools[name] = function
-            replaced = True
-
-        manager = getattr(self.server, "_tool_manager", None)
-        managed = getattr(manager, "_tools", None)
-        if isinstance(managed, dict) and name in managed:
-            tool = managed[name]
-            try:
-                if hasattr(tool, "fn"):
-                    tool.fn = function
-                elif hasattr(tool, "function"):
-                    tool.function = function
-                else:
-                    managed[name] = function
-            except Exception as exc:
-                raise RuntimeError(
-                    f"failed to replace existing MCP tool {name!r}"
-                ) from exc
-            replaced = True
-
-        return replaced
+        schemas = getattr(self.server_module, "TOOL_SCHEMAS", None)
+        if isinstance(schemas, list):
+            return any(
+                isinstance(schema, dict) and schema.get("name") == name
+                for schema in schemas
+            )
+        return False
 
     def _sync_handler(self, name: str, function: ToolCallable) -> None:
         handlers = getattr(self.server_module, "TOOL_HANDLERS", None)

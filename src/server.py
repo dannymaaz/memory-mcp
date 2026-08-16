@@ -17,31 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional direct SQL path
     Json = None  # type: ignore[assignment]
     RealDictCursor = None  # type: ignore[assignment]
 
-try:
-    from mcp.server.fastmcp import FastMCP
-except ModuleNotFoundError:  # pragma: no cover - fallback para entornos sin dependencia
-    class FastMCP:  # type: ignore[no-redef]
-        """Fallback minimo cuando la libreria mcp no esta instalada."""
-
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            self._tools: dict[str, Callable[..., Any]] = {}
-
-        def tool(
-            self,
-            name: str | None = None,
-            description: str | None = None,
-            **_kwargs: Any,
-        ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-            def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-                self._tools[name or func.__name__] = func
-                setattr(func, "_tool_description", description)
-                return func
-
-            return decorator
-
-        def run(self, transport: str = "stdio", mount_path: str | None = None) -> None:
-            del transport, mount_path
-            return None
+from mcp.server import MCPServer
 
 from .interface_detector import detect_interface, get_model_for_interface
 from .model_router import ModelRouter
@@ -60,7 +36,7 @@ from .utils import (
 
 Handler = Callable[..., Any]
 
-server = FastMCP(
+server = MCPServer(
     name="Memory MCP",
     instructions=(
         "Persistent project memory MCP server backed by Supabase. "

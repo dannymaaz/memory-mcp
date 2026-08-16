@@ -15,7 +15,7 @@
 ![Version](https://img.shields.io/badge/version-0.3.0-0A7D73)
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
-![MCP](https://img.shields.io/badge/MCP-v1.28%2B%20%3C2-6C5CE7)
+![MCP](https://img.shields.io/badge/MCP-v2%20%3C3-6C5CE7)
 ![Storage](https://img.shields.io/badge/storage-local%20SQLite-003B57?logo=sqlite&logoColor=white)
 
 > **Release status — 2026-08-16:** v0.3.0 has a fully validated immutable release candidate, but the public GitHub Release and PyPI publication are still pending. Until PyPI publication is verified, install from this repository instead of assuming `pipx install persistent-memory-mcp` is available publicly. See [Releasing](docs/RELEASING.md) and [Issue #53](https://github.com/dannymaaz/memory-mcp/issues/53).
@@ -54,7 +54,7 @@ The product is intentionally **personal and local-first**:
 | Confirmed deletion | Exact scoped preview plus short-lived single-use confirmation |
 | Private Dashboard | Localhost-only operational and maintenance UI |
 | Application composition | Explicit `create_application(settings)` runtime composition boundary |
-| Idempotent MCP Tool Registry | Centralized dynamic tool registration/replacement without duplicate schemas |
+| Idempotent MCP Tool Registry | Centralized dynamic tool registration/replacement through public MCP APIs |
 
 ## Quick start
 
@@ -147,13 +147,15 @@ These adapters do not change the product into a hosted multi-user service.
 
 ## MCP SDK compatibility
 
-The current runtime uses the MCP Python SDK v1 `FastMCP` API and intentionally constrains the dependency to:
+Current post-v0.3 `main` uses the installed MCP Python SDK v2 `MCPServer` API and constrains the dependency to:
 
 ```text
-mcp>=1.28,<2
+mcp>=2,<3
 ```
 
-Issue #88 tracks a deliberate future migration to MCP v2 `MCPServer`. The upper bound must not be removed until that migration passes the same cross-platform and installed-package gates.
+The runtime has no local MCP fallback. Dynamic tools are registered or replaced through the public MCP v2 `add_tool()` / `remove_tool()` APIs, while the existing application-level handler/schema mirrors remain synchronized.
+
+The immutable v0.3.0 release candidate is intentionally separate: it remains pinned to its already validated MCP v1 compatibility state and must not be rebuilt from current `main`. See [MCP SDK compatibility](docs/MCP_SDK_COMPATIBILITY.md) and [Issue #53](https://github.com/dannymaaz/memory-mcp/issues/53).
 
 ## Context Compiler
 
@@ -215,7 +217,7 @@ The public v0.3.0 release must be created from the immutable release-only commit
 
 That commit was produced by PR #89 after Quality #361 passed the complete Ubuntu/Windows/macOS × Python 3.11–3.13 release matrix, release artifact checks and installed v0.2.0 upgrade validation.
 
-Current `main` includes later post-v0.3 work and **must not** be tagged as v0.3.0.
+Current `main` includes later post-v0.3 work — including the MCP v2 runtime migration — and **must not** be tagged as v0.3.0.
 
 The repository-side PyPI workflow was merged in PR #91 after Quality #368. It requires the future `v0.3.0` GitHub Release to resolve exactly to the immutable release commit, downloads its wheel/sdist/`SHA256SUMS`, verifies them and publishes those exact distributions through PyPI Trusted Publishing without rebuilding them.
 
@@ -250,6 +252,7 @@ pytest -q
 - [Public documentation](https://dannymaaz.github.io/memory-mcp/)
 - [Roadmap](docs/ROADMAP.md)
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
+- [MCP SDK compatibility](docs/MCP_SDK_COMPATIBILITY.md)
 - [Release process](docs/RELEASING.md)
 - [Upgrade and rollback](docs/UPGRADING.md)
 - [Application composition](docs/APPLICATION_COMPOSITION.md)
