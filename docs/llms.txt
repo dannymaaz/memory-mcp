@@ -1,6 +1,6 @@
 # Persistent Memory MCP
 
-Persistent Memory MCP is an open-source Python Model Context Protocol server for durable software-project memory across AI coding tools.
+Persistent Memory MCP is an open-source Python Model Context Protocol server for durable software-project memory and measurable context compilation across AI coding tools.
 
 Documentation: https://dannymaaz.github.io/memory-mcp/
 Repository: https://github.com/dannymaaz/memory-mcp
@@ -12,18 +12,37 @@ Author: Danny Maaz
 ## Purpose
 It stores project architecture, technical decisions, tasks, warnings, checkpoints, file relationships, timeline events and session state. Compatible MCP clients can retrieve the same project context in later sessions.
 
+The post-v0.3 Context Compiler filters, ranks, verifies and packs memory/repository evidence under a hard token budget instead of returning unbounded project history.
+
 ## Clients
 Codex, Claude Code, Claude Desktop, OpenCode, Qwen Code and other clients with standard MCP server configuration.
 
 ## Storage and search
-The current backend uses Supabase and PostgreSQL. The included schema enables Row Level Security. Search supports vector similarity when embeddings are supplied and lexical fallback otherwise.
+SQLite is the default local-first backend. Supabase/PostgreSQL remain optional self-managed extras. Search supports semantic retrieval with deterministic lexical/local fallback.
+
+## Context Compiler
+Context Packet v1 records provenance, verification state, final serialized token count, tokenizer/model identity and per-block selection metrics.
+
+Progressive repository retrieval expands map -> files -> symbols -> exact line fragments with Git/file SHA-256 provenance and explicit byte/token limits.
+
+Persistent symbol evolution stores commit-scoped symbol snapshots and classified added/modified/moved/renamed/deleted changes without storing unbounded source bodies. Evidence can be verified, stale, contradicted, missing_source or unverified.
+
+## Quality regression gates
+MEM-39 / PR #66 introduces deterministic local quality gates over a versioned non-sensitive coding-task corpus.
+
+Measured metrics include file recall@5, symbol recall@8, precision, hard token fit, token savings, provenance coverage, latency and safety pass rate. Initial v1 baseline has full recall, token-fit and provenance coverage with 77.22% average token savings against the supported-repository baseline.
+
+Hard adversarial gates cover expired/untrusted memory, prompt injection, dirty repository cursor invalidation, rename identity continuity, contradicted evidence retention and stale evidence after dirty Git changes.
+
+Public evaluation contract: https://github.com/dannymaaz/memory-mcp/blob/main/docs/CONTEXT_QUALITY.md
 
 ## Installation
 pipx install persistent-memory-mcp
 memory-mcp init
 memory-mcp doctor
+memory-mcp health
 
-Run schema.sql once in Supabase, then register the generated mcpServers configuration in the AI client.
+Default local database: ~/.memory-mcp/memory.db
 
 ## Relationship to Git
-Git stores code history. Persistent Memory MCP stores project reasoning, working state, warnings and next actions that are not fully represented by commits.
+Git stores code history. Persistent Memory MCP stores project reasoning and working state while also persisting bounded Git-grounded provenance so later agents can distinguish current verified source evidence from stale or contradicted historical context.
