@@ -19,7 +19,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       EXPECTED_TAG: v0.3.0
-      EXPECTED_COMMIT: 4dc160c1fdf0e2858337239c42c9085fe8097493
+      EXPECTED_COMMIT: 9e0a084dd9b179612082edef99e1c3c9bf563ffa
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Require the approved v0.3.0 tag
