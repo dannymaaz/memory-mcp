@@ -98,21 +98,34 @@ Quality #306 verified exact traversal without duplicates/skips/foreign rows, sta
 
 See [PAGINATION.md](PAGINATION.md).
 
-### Dashboard operational completion — ⬜ Remaining subset
+### Dashboard operational completion — 🟡 In review
 
-**Notion:** MEM-12
+**Notion:** MEM-12  
+**GitHub:** Issue #76 / PR #77
 
-Much of the original Dashboard scope is already delivered through PR #16, confirmed deletion, PR #68 operational Galaxy and PR #73 pagination. MEM-12 now retains only genuine remaining UX/maintenance work:
+PR #77 closes the genuine Dashboard maintenance/UX subset without changing the local-first product boundary.
 
-- explicit backup/health/storage/verification/sensitivity cards where useful;
-- clear empty/loading/error states;
-- safe maintenance controls that call existing confirmed backup/restore/delete flows without bypassing confirmation.
+Delivered in the review branch:
 
-No public/remote dashboard is planned.
+- owner/project-scoped maintenance status built on `HealthService` rather than duplicated checks;
+- health, storage/free-disk, latest verified backup, persisted verification-risk and sensitivity cards;
+- explicit empty/error/loading states;
+- existing bounded snapshot plus PR #73 keyset drill-down;
+- safe localhost backup action with server-generated destination inside explicit `--backup-dir`;
+- restore as signed `preview → confirm`, delegating to the existing verified restore/safety-backup/rollback service;
+- selective deletion as signed `preview → confirm`, at most 100 explicit IDs, sharing the consumed confirmation state with the MCP deletion interface;
+- JSON-only POST surface, 64 KiB request cap and explicit `X-Memory-MCP-Action: 1` header;
+- restrictive CSP with same-origin `connect-src` for the local UI;
+- no arbitrary filesystem paths, raw SQL or public/remote Dashboard behavior.
+
+The implementation Quality gate is green across the completed Ubuntu/macOS/Windows jobs observed so far; the item remains **in review** until the final documentation HEAD receives a complete exact-head Quality run and PR #77 is merged.
+
+See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 
 ### Application container + MCP Tool Registry — ⬜ Planned
 
-**Notion:** MEM-29
+**Notion:** MEM-29  
+**GitHub:** Issue #75
 
 Goal: reduce accumulated runtime ordering/monkey-patching coupling incrementally, not rewrite the server.
 
@@ -161,8 +174,7 @@ A roadmap item is not complete until:
 
 ## Current recommended order
 
-1. Merge the state-reconciled **PR #73 / MEM-30** after its final documentation-only exact-head Quality passes.
-2. Complete the remaining **MEM-12 Dashboard** maintenance/UX subset.
-3. Implement **MEM-29 Application container + Tool Registry** incrementally.
-4. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
-5. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.
+1. Finish the exact-head review/merge of **PR #77 / MEM-12 Dashboard**.
+2. Implement **MEM-29 / Issue #75 Application container + Tool Registry** incrementally, beginning with Maintenance/Deletion registration coupling.
+3. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
+4. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.

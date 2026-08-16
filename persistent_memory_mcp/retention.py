@@ -29,6 +29,7 @@ ALLOWED_MEMORY_TYPES = frozenset(
     }
 )
 DEFAULT_CONFIRMATION_TTL_SECONDS = 300
+USED_CONFIRMATION_FINGERPRINTS: set[str] = set()
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,17 @@ def validate_confirmation_token(
     ).hexdigest()
     if not hmac.compare_digest(token_signature, expected_signature):
         raise ConfirmationError("invalid confirmation token signature")
+
+
+def assert_confirmation_unused(fingerprint: str) -> None:
+    """Fail closed if a destructive confirmation fingerprint was already consumed."""
+    if fingerprint in USED_CONFIRMATION_FINGERPRINTS:
+        raise ConfirmationError("confirmation token has already been used")
+
+
+def mark_confirmation_used(fingerprint: str) -> None:
+    """Mark one validated destructive confirmation as consumed across interfaces."""
+    USED_CONFIRMATION_FINGERPRINTS.add(fingerprint)
 
 
 def is_expired(record: Mapping[str, Any], *, now: datetime | None = None) -> bool:

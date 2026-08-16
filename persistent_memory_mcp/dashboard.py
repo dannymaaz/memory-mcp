@@ -16,6 +16,12 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 
+from .dashboard_maintenance_http import (
+    MAX_ACTION_BODY_BYTES,
+    dispatch_maintenance_action,
+    render_maintenance_controls,
+)
+from .dashboard_status import DashboardStatusError, DashboardStatusService
 from .galaxy_view import render_galaxy_view
 from .knowledge_graph import build_knowledge_graph, compact_graph_context
 from .operational_map import OperationalMapLimits, OperationalMapService
@@ -53,6 +59,7 @@ class DashboardConfig:
     sqlite_path: Path = Path.home() / ".memory-mcp" / "memory.db"
     row_limit: int = 100
     owner_id: str | None = None
+    backup_directory: Path | None = None
 
     def validate(self) -> None:
         if self.host not in _LOOPBACK_HOSTS:
@@ -77,6 +84,13 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
 
 def _order_column(columns: set[str]) -> str:
     for candidate in ("updated_at", "created_at", "started_at", "deployed_at", "id"):
+        if candidate in columns:
+            return candidate
+    return "rowid"
+
+
+def _pagination_order_column(columns: set[str]) -> str:
+    for candidate in ("created_at", "started_at", "deployed_at", "updated_at"):
         if candidate in columns:
             return candidate
     return "rowid"
@@ -208,16 +222,19 @@ def dashboard_table_page(
         filters: dict[str, Any] = {}
         if "owner_id" in columns:
             filters["owner_id"] = owner
-        if project_id and "project_id" in columns:
+        if project_id:
             project_row = connection.execute(
                 "select 1 from projects where id=? and owner_id=?",
                 (project_id, owner),
             ).fetchone()
             if project_row is None:
                 raise ValueError("project does not exist inside the active owner scope")
-            filters["project_id"] = project_id
-        order_by = _order_column(columns)
-        if order_by in {"rowid", "id"}:
+            if "project_id" in columns:
+                filters["project_id"] = project_id
+            elif table == "projects" and "id" in columns:
+                filters["id"] = project_id
+        order_by = _pagination_order_column(columns)
+        if order_by == "rowid":
             raise ValueError(f"dashboard table {table} lacks a stable timestamp order column")
         where_sql = ""
         params: list[Any] = []
@@ -274,7 +291,63 @@ def export_snapshot(snapshot: Mapping[str, Any], *, export_format: str) -> tuple
     return output.getvalue().encode(), "text/csv; charset=utf-8"
 
 
-def render_dashboard(snapshot: Mapping[str, Any]) -> str:
+def _format_bytes(value: Any) -> str:
+    try:
+        amount = int(value or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if amount < 1024 or unit == "TiB":
+            return f"{amount:.0f} {unit}" if unit == "B" else f"{amount:.1f} {unit}"
+        amount /= 1024
+    return "0 B"
+
+
+def _maintenance_cards(maintenance: Mapping[str, Any] | None) -> str:
+    if not maintenance:
+        return '<section class="status error" role="status"><strong>Maintenance status unavailable</strong></section>'
+    if maintenance.get("status") == "error":
+        message = html.escape(str(maintenance.get("message") or "Maintenance status unavailable"))
+        return f'<section class="status error" role="alert"><strong>Status unavailable</strong><p>{message}</p></section>'
+    health = maintenance.get("health", {})
+    storage = maintenance.get("storage", {})
+    backup = maintenance.get("backup", {})
+    verification = maintenance.get("verification", {})
+    sensitivity = maintenance.get("sensitivity", {})
+    backup_info = backup.get("latest_verified") or {}
+    backup_label = backup_info.get("backup_name") or (
+        "Not configured" if not backup.get("configured") else "None verified"
+    )
+    sensitivity_total = sum(int(value) for value in (sensitivity.get("totals") or {}).values())
+    values = (
+        ("Health", health.get("status", "unknown")),
+        ("Maintenance ready", "yes" if health.get("maintenance_ready") else "no"),
+        ("Database", _format_bytes(storage.get("database_size_bytes"))),
+        ("Free disk", _format_bytes(storage.get("disk_free_bytes"))),
+        ("Latest backup", backup_label),
+        ("Evidence risk", verification.get("evidence_risk_count", 0)),
+        ("Sensitivity-tagged", sensitivity_total),
+    )
+    cards = "".join(
+        "<article class=\"maintenance-card\"><strong>"
+        + html.escape(str(label))
+        + "</strong><span>"
+        + html.escape(str(value))
+        + "</span></article>"
+        for label, value in values
+    )
+    return (
+        '<section class="maintenance" aria-labelledby="maintenance-heading">'
+        '<h2 id="maintenance-heading">Maintenance status</h2><div class="cards">'
+        + cards
+        + "</div></section>"
+    )
+
+
+def render_dashboard(
+    snapshot: Mapping[str, Any],
+    maintenance: Mapping[str, Any] | None = None,
+) -> str:
     """Render a dependency-free dashboard page with escaped content."""
     counts = snapshot.get("counts", {})
     tables = snapshot.get("tables", {})
@@ -284,44 +357,63 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
         for name, value in counts.items()
     )
     query = html.escape(str(filters.get("query") or ""), quote=True)
-    project = html.escape(str(filters.get("project_id") or ""), quote=True)
+    raw_project = str(filters.get("project_id") or "")
+    project = html.escape(raw_project, quote=True)
     sections: list[str] = []
     for name, rows in tables.items():
         body = "".join(
-            "<li><code>" + html.escape(json.dumps(row, ensure_ascii=False, default=str)) + "</code></li>"
+            "<li><code>"
+            + html.escape(json.dumps(row, ensure_ascii=False, default=str))
+            + "</code></li>"
             for row in rows
-        ) or "<li>No records</li>"
-        page_href = f"/api/table-page?table={html.escape(str(name), quote=True)}"
-        if project:
-            page_href += f"&amp;project_id={project}"
+        ) or '<li class="empty" role="status">No records yet.</li>'
+        page_link = ""
+        if name in SQLiteStorage.allowed_tables:
+            page_href = f"/api/table-page?table={html.escape(str(name), quote=True)}"
+            if project:
+                page_href += f"&amp;project_id={project}"
+            page_link = f'<a href="{page_href}">Browse paginated JSON</a>'
+        else:
+            page_link = '<small>Snapshot only</small>'
         sections.append(
             f"<section><h2>{html.escape(str(name))}</h2>"
-            f'<a href="{page_href}">Browse paginated JSON</a><ol>{body}</ol></section>'
+            f"{page_link}<ol>{body}</ol></section>"
         )
     galaxy_href = "/galaxy" + (f"?project_id={project}" if project else "")
     operational_href = (
         f"/galaxy/operational?project_id={project}" if project else "/api/operational/projects"
     )
+    maintenance_href = "/api/maintenance/status" + (f"?project_id={project}" if project else "")
     operational_label = "Operational galaxy" if project else "Operational projects"
+    controls = render_maintenance_controls(
+        maintenance,
+        project_id=raw_project or None,
+    )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width">'
         '<title>Persistent Memory MCP Dashboard</title><style>'
         'body{font-family:system-ui,sans-serif;margin:0;background:#0b1220;color:#e5edf8}'
         'main{max-width:1180px;margin:auto;padding:32px}header{margin-bottom:24px}'
-        '.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}'
+        '.cards,.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}'
         'article,section,form{background:#121c2e;border:1px solid #26344b;border-radius:12px;padding:16px}'
-        'article span{display:block;font-size:2rem;margin-top:8px}section{margin-top:16px}'
-        'ol{padding-left:20px}li{margin:8px 0;overflow-wrap:anywhere}code{white-space:pre-wrap}'
+        'article span{display:block;font-size:1.45rem;margin-top:8px}.maintenance{margin:16px 0}.maintenance .cards{margin-top:12px}'
+        '.maintenance-card span{font-size:1.1rem}.status.error{border-color:#a33;color:#ffd3d3}.empty,.muted{color:#9fb0c7}'
+        '.maintenance-actions{margin:16px 0}.maintenance-actions article{display:flex;flex-direction:column;gap:10px}'
+        '.action-status{white-space:pre-wrap;overflow:auto;background:#0b1220;border:1px solid #26344b;border-radius:8px;padding:12px}'
+        'section{margin-top:16px}ol{padding-left:20px}li{margin:8px 0;overflow-wrap:anywhere}code{white-space:pre-wrap}'
         'small{color:#9fb0c7}form{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}'
-        'input,button,a{padding:10px;border-radius:8px;border:1px solid #41516b;background:#0b1220;color:#e5edf8;text-decoration:none}'
+        'input,select,button,a{padding:10px;border-radius:8px;border:1px solid #41516b;background:#0b1220;color:#e5edf8;text-decoration:none}'
+        'button:disabled,input:disabled{opacity:.55;cursor:not-allowed}'
         '</style></head><body><main><header><h1>Persistent Memory MCP</h1>'
-        '<small>Local read-only operational dashboard</small></header>'
+        '<small>Local-first operational dashboard; destructive actions require preview and confirmation.</small></header>'
         f'<form method="get"><input name="project_id" placeholder="Project ID" value="{project}">'
         f'<input name="q" placeholder="Search" maxlength="200" value="{query}">'
         '<button type="submit">Filter</button>'
         f'<a href="{galaxy_href}">Open galaxy</a>'
-        f'<a href="{operational_href}">{operational_label}</a></form>'
+        f'<a href="{operational_href}">{operational_label}</a>'
+        f'<a href="{maintenance_href}">Maintenance JSON</a></form>'
+        f'{_maintenance_cards(maintenance)}{controls}'
         f'<div class="cards">{cards}</div>{"".join(sections)}</main></body></html>'
     )
 
@@ -399,11 +491,26 @@ def _operational_payload(
     )
 
 
+def _maintenance_payload(
+    storage: SQLiteStorage,
+    *,
+    owner_id: str | None,
+    backup_directory: Path | None,
+    project_id: str | None,
+) -> dict[str, Any]:
+    return DashboardStatusService(
+        storage,
+        owner_id=owner_id,
+        backup_directory=backup_directory,
+    ).read(project_id=project_id)
+
+
 def build_handler(
     storage: SQLiteStorage,
     *,
     row_limit: int = 100,
     owner_id: str | None = None,
+    backup_directory: Path | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     class DashboardHandler(BaseHTTPRequestHandler):
         def _security_headers(self, *, allow_script: bool = False) -> None:
@@ -411,19 +518,34 @@ def build_handler(
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
-            script = "; script-src 'unsafe-inline'" if allow_script else ""
+            script = "; script-src 'unsafe-inline'; connect-src 'self'" if allow_script else ""
             self.send_header(
                 "Content-Security-Policy",
                 f"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'{script}",
             )
 
-        def _send_payload(self, payload: bytes, content_type: str, *, allow_script: bool = False) -> None:
+        def _send_payload(
+            self,
+            payload: bytes,
+            content_type: str,
+            *,
+            allow_script: bool = False,
+        ) -> None:
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self._security_headers(allow_script=allow_script)
             self.end_headers()
             self.wfile.write(payload)
+
+        def _send_json(self, status_code: int, payload: Mapping[str, Any]) -> None:
+            encoded = json.dumps(payload, ensure_ascii=False, default=str).encode()
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self._security_headers()
+            self.end_headers()
+            self.wfile.write(encoded)
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
@@ -440,7 +562,10 @@ def build_handler(
                     changed_only = _parse_bool(
                         params.get("changed_only", [""])[0], name="changed_only"
                     )
-                    if parsed.path in {"/api/operational/graph", "/galaxy/operational"} and not project_id:
+                    if (
+                        parsed.path in {"/api/operational/graph", "/galaxy/operational"}
+                        and not project_id
+                    ):
                         raise ValueError("project_id is required for the operational graph")
                     operational = _operational_payload(
                         storage,
@@ -452,13 +577,39 @@ def build_handler(
                         changed_only=changed_only,
                     )
                     if parsed.path == "/galaxy/operational":
-                        payload = render_galaxy_view(operational, project_id=project_id).encode()
-                        self._send_payload(payload, "text/html; charset=utf-8", allow_script=True)
+                        payload = render_galaxy_view(
+                            operational,
+                            project_id=project_id,
+                        ).encode()
+                        self._send_payload(
+                            payload,
+                            "text/html; charset=utf-8",
+                            allow_script=True,
+                        )
                     else:
                         payload = json.dumps(
-                            operational, ensure_ascii=False, default=str, indent=2
+                            operational,
+                            ensure_ascii=False,
+                            default=str,
+                            indent=2,
                         ).encode()
                         self._send_payload(payload, "application/json; charset=utf-8")
+                    return
+
+                if parsed.path == "/api/maintenance/status":
+                    maintenance = _maintenance_payload(
+                        storage,
+                        owner_id=owner_id,
+                        backup_directory=backup_directory,
+                        project_id=project_id,
+                    )
+                    payload = json.dumps(
+                        maintenance,
+                        ensure_ascii=False,
+                        default=str,
+                        indent=2,
+                    ).encode()
+                    self._send_payload(payload, "application/json; charset=utf-8")
                     return
 
                 if parsed.path == "/api/table-page":
@@ -473,7 +624,10 @@ def build_handler(
                         owner_id=owner_id,
                     )
                     payload = json.dumps(
-                        table_page, ensure_ascii=False, default=str, indent=2
+                        table_page,
+                        ensure_ascii=False,
+                        default=str,
+                        indent=2,
                     ).encode()
                     self._send_payload(payload, "application/json; charset=utf-8")
                     return
@@ -514,22 +668,82 @@ def build_handler(
                     content_type = "application/json; charset=utf-8"
                 elif parsed.path == "/galaxy":
                     payload = render_galaxy_view(
-                        _build_graph(snapshot, project_id, query, limit), project_id=project_id
+                        _build_graph(snapshot, project_id, query, limit),
+                        project_id=project_id,
                     ).encode()
                     content_type = "text/html; charset=utf-8"
                     allow_script = True
                 elif parsed.path == "/export.csv":
                     payload, content_type = export_snapshot(snapshot, export_format="csv")
                 elif parsed.path in {"/", "/index.html"}:
-                    payload = render_dashboard(snapshot).encode()
+                    try:
+                        maintenance = _maintenance_payload(
+                            storage,
+                            owner_id=owner_id,
+                            backup_directory=backup_directory,
+                            project_id=project_id,
+                        )
+                    except DashboardStatusError as exc:
+                        maintenance = {
+                            "status": "error",
+                            "message": str(exc),
+                            "read_only": True,
+                        }
+                    payload = render_dashboard(snapshot, maintenance).encode()
                     content_type = "text/html; charset=utf-8"
+                    allow_script = True
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
-            except (ValueError, TypeError) as exc:
+            except (ValueError, TypeError, DashboardStatusError) as exc:
                 self.send_error(HTTPStatus.BAD_REQUEST, str(exc))
                 return
             self._send_payload(payload, content_type, allow_script=allow_script)
+
+        def do_POST(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self._send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "status": "error",
+                        "error": "invalid_content_length",
+                        "message": "Content-Length must be an integer.",
+                    },
+                )
+                return
+            if content_length < 0:
+                self._send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "status": "error",
+                        "error": "invalid_content_length",
+                        "message": "Content-Length cannot be negative.",
+                    },
+                )
+                return
+            if content_length > MAX_ACTION_BODY_BYTES:
+                self._send_json(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    {
+                        "status": "error",
+                        "error": "body_too_large",
+                        "message": "Maintenance action body is too large.",
+                    },
+                )
+                return
+            body = self.rfile.read(content_length)
+            status_code, result = dispatch_maintenance_action(
+                storage,
+                path=parsed.path,
+                headers=dict(self.headers.items()),
+                body=body,
+                owner_id=owner_id,
+                backup_directory=backup_directory,
+            )
+            self._send_json(status_code, result)
 
         def log_message(self, _format: str, *_args: object) -> None:
             return
@@ -543,7 +757,12 @@ def serve_dashboard(config: DashboardConfig) -> None:
     storage.initialize()
     server = ThreadingHTTPServer(
         (config.host, config.port),
-        build_handler(storage, row_limit=config.row_limit, owner_id=config.owner_id),
+        build_handler(
+            storage,
+            row_limit=config.row_limit,
+            owner_id=config.owner_id,
+            backup_directory=config.backup_directory,
+        ),
     )
     print(f"Dashboard available at http://{config.host}:{config.port}")
     server.serve_forever()
@@ -556,6 +775,10 @@ def main() -> None:
     parser.add_argument("--sqlite-path", default=str(Path.home() / ".memory-mcp" / "memory.db"))
     parser.add_argument("--row-limit", type=int, default=100)
     parser.add_argument("--owner-id", default=os.environ.get("OWNER_ID"))
+    parser.add_argument(
+        "--backup-dir",
+        help="Optional directory containing verified backup manifests for maintenance status",
+    )
     args = parser.parse_args()
     serve_dashboard(
         DashboardConfig(
@@ -564,6 +787,9 @@ def main() -> None:
             sqlite_path=Path(args.sqlite_path).expanduser().resolve(),
             row_limit=args.row_limit,
             owner_id=args.owner_id,
+            backup_directory=(
+                Path(args.backup_dir).expanduser().resolve() if args.backup_dir else None
+            ),
         )
     )
 
