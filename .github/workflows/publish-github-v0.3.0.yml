@@ -7,6 +7,9 @@ on:
         description: "Type RELEASE-v0.3.0 to create the immutable v0.3.0 tag and GitHub Release"
         required: true
         type: string
+  push:
+    branches:
+      - "release/publish-v0.3.0"
 
 permissions:
   contents: write
@@ -25,13 +28,18 @@ jobs:
       RELEASE_TITLE: Persistent Memory MCP v0.3.0 — Data Safety and Recovery
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Require explicit release confirmation
+      - name: Require an authorized release trigger
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          test "$CONFIRMATION" = "RELEASE-v0.3.0"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$CONFIRMATION" = "RELEASE-v0.3.0"
+          else
+            test "$GITHUB_EVENT_NAME" = "push"
+            test "$GITHUB_REF" = "refs/heads/release/publish-v0.3.0"
+          fi
 
       - name: Checkout immutable release source
         uses: actions/checkout@v7
