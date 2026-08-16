@@ -7,12 +7,12 @@ import json
 import sqlite3
 import subprocess
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .code_intelligence import DEFAULT_EXCLUDES, RepositoryIndex, Symbol, build_repository_index
-from .git_verification import GitSnapshot, file_sha256, repository_snapshot
+from .git_verification import file_sha256, repository_snapshot
 from .security import redact_sensitive_value
 from .server_integration import _replace_registered_tool
 from .settings import RuntimeSettings
@@ -123,6 +123,24 @@ def _row_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
 
+def _normalized_signature(signature: object, name: object, qualified_name: object) -> str:
+    """Normalize a bounded persisted signature so name-only renames can retain identity.
+
+    Matching is deliberately conservative: callers still require the resulting key to
+    be unique on both sides before it can establish a logical-identity match.
+    """
+    value = " ".join(str(signature or "").split())
+    replacements = sorted(
+        {str(name or "").strip(), str(qualified_name or "").strip()},
+        key=len,
+        reverse=True,
+    )
+    for candidate in replacements:
+        if candidate:
+            value = value.replace(candidate, "<symbol>")
+    return value
+
+
 class SymbolEvolutionService:
     """Persist and query bounded symbol evolution inside the local SQLite database."""
 
@@ -209,14 +227,22 @@ class SymbolEvolutionService:
         rows = connection.execute(
             "select * from code_symbol_snapshot_runs "
             "where owner_id=? and project_id=? and repository=? and commit_sha<>? "
-            "order by captured_at desc limit 100",
+            "order by captured_at desc, rowid desc limit 100",
             (self.owner_id, project_id, str(root), current_commit),
         ).fetchall()
         best: tuple[int, dict[str, Any]] | None = None
         for row in rows:
             candidate = dict(row)
             completed = subprocess.run(
-                ["git", "-C", str(root), "merge-base", "--is-ancestor", candidate["commit_sha"], current_commit],
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "merge-base",
+                    "--is-ancestor",
+                    candidate["commit_sha"],
+                    current_commit,
+                ],
                 check=False,
                 capture_output=True,
                 timeout=10,
@@ -224,7 +250,14 @@ class SymbolEvolutionService:
             if completed.returncode != 0:
                 continue
             try:
-                distance = int(_git(root, "rev-list", "--count", f"{candidate['commit_sha']}..{current_commit}"))
+                distance = int(
+                    _git(
+                        root,
+                        "rev-list",
+                        "--count",
+                        f"{candidate['commit_sha']}..{current_commit}",
+                    )
+                )
             except (ValueError, SymbolEvolutionError):
                 continue
             if distance <= 0:
@@ -269,7 +302,10 @@ class SymbolEvolutionService:
             file_hash = file_sha256(root, relative)
             if not file_hash:
                 continue
-            ordered = sorted(symbols, key=lambda item: (item.line, item.end_line, item.qualified_name))
+            ordered = sorted(
+                symbols,
+                key=lambda item: (item.line, item.end_line, item.qualified_name),
+            )
             for position, symbol in enumerate(ordered):
                 start, end = self._source_span(ordered, position, lines)
                 body = "\n".join(lines[start - 1 : end])
@@ -300,7 +336,11 @@ class SymbolEvolutionService:
         buckets: dict[Any, list[Any]] = defaultdict(list)
         for item in items:
             buckets[key(item)].append(item)
-        return {bucket_key: values[0] for bucket_key, values in buckets.items() if len(values) == 1}
+        return {
+            bucket_key: values[0]
+            for bucket_key, values in buckets.items()
+            if len(values) == 1
+        }
 
     def _match_symbols(
         self,
@@ -329,6 +369,21 @@ class SymbolEvolutionService:
                 lambda value: (value["kind"], value["name"], value["signature_sha256"]),
                 0.85,
             ),
+            (
+                lambda value: (
+                    value.kind,
+                    _normalized_signature(value.signature, value.name, value.qualified_name),
+                ),
+                lambda value: (
+                    value["kind"],
+                    _normalized_signature(
+                        value.get("signature"),
+                        value.get("name"),
+                        value.get("qualified_name"),
+                    ),
+                ),
+                0.78,
+            ),
         )
         for current_key, previous_key, confidence in strategies:
             current_map = self._unique_map(
@@ -340,7 +395,9 @@ class SymbolEvolutionService:
             previous_positions = {
                 previous_key(previous[index]): index for index in unmatched_previous
             }
-            current_positions = {current_key(current[index]): index for index in unmatched_current}
+            current_positions = {
+                current_key(current[index]): index for index in unmatched_current
+            }
             for key_value in sorted(set(current_map) & set(previous_map), key=str):
                 current_index = current_positions[key_value]
                 previous_index = previous_positions[key_value]
@@ -359,9 +416,7 @@ class SymbolEvolutionService:
                     symbol.source_symbol_id,
                     prefix="sym_",
                 )[:68]
-                matched.append(
-                    MatchedSymbol(symbol, logical_id, commit_sha, None, 1.0)
-                )
+                matched.append(MatchedSymbol(symbol, logical_id, commit_sha, None, 1.0))
                 continue
             previous_index, confidence = match
             old = previous[previous_index]
@@ -415,7 +470,10 @@ class SymbolEvolutionService:
         return _digest(run_id, source_symbol_id, prefix="snap_")[:69]
 
     @staticmethod
-    def _test_links(index: RepositoryIndex, logical_by_source: Mapping[str, tuple[str, str]]) -> list[tuple[str, str, str, str]]:
+    def _test_links(
+        index: RepositoryIndex,
+        logical_by_source: Mapping[str, tuple[str, str]],
+    ) -> list[tuple[str, str, str, str]]:
         symbol_by_id = {symbol.id: symbol for symbol in index.symbols}
         links: set[tuple[str, str, str, str]] = set()
         for edge in index.edges:
@@ -437,12 +495,10 @@ class SymbolEvolutionService:
         max_files: int = 2000,
         max_file_bytes: int = 512_000,
     ) -> dict[str, Any]:
-        """Capture the current clean HEAD idempotently and persist its evolution from the nearest ancestor run."""
+        """Capture clean HEAD idempotently and persist evolution from the nearest ancestor."""
         snapshot = repository_snapshot(repository_path)
         if snapshot.dirty:
-            raise SymbolEvolutionError(
-                "persistent symbol snapshots require a clean Git working tree"
-            )
+            raise SymbolEvolutionError("persistent symbol snapshots require a clean Git working tree")
         if not snapshot.commit_sha:
             raise SymbolEvolutionError("repository has no HEAD commit to snapshot")
         root = Path(snapshot.repository).resolve()
@@ -451,17 +507,14 @@ class SymbolEvolutionService:
         try:
             self._assert_schema(connection)
             self._assert_project(connection, project_id)
-            existing = self._existing_run(
-                connection, project_id, str(root), snapshot.commit_sha
-            )
+            existing = self._existing_run(connection, project_id, str(root), snapshot.commit_sha)
             if existing is not None:
-                return {
-                    "status": "current",
-                    "run": existing,
-                    "idempotent": True,
-                }
+                return {"status": "current", "run": existing, "idempotent": True}
             parent_run = self._nearest_ancestor_run(
-                connection, project_id, root, snapshot.commit_sha
+                connection,
+                project_id,
+                root,
+                snapshot.commit_sha,
             )
             previous: list[dict[str, Any]] = []
             if parent_run is not None:
@@ -483,9 +536,7 @@ class SymbolEvolutionService:
             max_file_bytes=max_file_bytes,
         )
         captured = self._capture_symbols(root, index)
-        matched, deleted = self._match_symbols(
-            captured, previous, str(root), snapshot.commit_sha
-        )
+        matched, deleted = self._match_symbols(captured, previous, str(root), snapshot.commit_sha)
         revalidated = repository_snapshot(str(root))
         if revalidated.commit_sha != snapshot.commit_sha or revalidated.dirty:
             raise SymbolEvolutionError(
@@ -506,16 +557,14 @@ class SymbolEvolutionService:
             self._assert_schema(connection)
             self._assert_project(connection, project_id)
             connection.execute("begin immediate")
-            existing = self._existing_run(
-                connection, project_id, str(root), snapshot.commit_sha
-            )
+            existing = self._existing_run(connection, project_id, str(root), snapshot.commit_sha)
             if existing is not None:
                 connection.rollback()
                 return {"status": "current", "run": existing, "idempotent": True}
 
             connection.execute(
-                "insert into code_symbol_snapshot_runs(" 
-                "id,project_id,owner_id,repository,commit_sha,ref,commit_author,commit_time," 
+                "insert into code_symbol_snapshot_runs("
+                "id,project_id,owner_id,repository,commit_sha,ref,commit_author,commit_time,"
                 "symbol_count,files_scanned,files_skipped,metadata) "
                 "values(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -545,9 +594,9 @@ class SymbolEvolutionService:
                 snapshot_id = self._snapshot_id(run_id, symbol.source_symbol_id)
                 logical_by_source[symbol.source_symbol_id] = (match.logical_id, snapshot_id)
                 connection.execute(
-                    "insert into code_symbol_snapshots(" 
-                    "id,run_id,project_id,owner_id,repository,commit_sha,ref,logical_id," 
-                    "source_symbol_id,path,name,qualified_name,kind,language,line,end_line,signature," 
+                    "insert into code_symbol_snapshots("
+                    "id,run_id,project_id,owner_id,repository,commit_sha,ref,logical_id,"
+                    "source_symbol_id,path,name,qualified_name,kind,language,line,end_line,signature,"
                     "signature_sha256,body_sha256,file_sha256,first_seen_commit,verification_state) "
                     "values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
@@ -579,9 +628,9 @@ class SymbolEvolutionService:
                 changes[change_type] += 1
                 old_snapshot_id = match.old.get("id") if match.old else None
                 connection.execute(
-                    "insert into code_symbol_changes(" 
-                    "project_id,owner_id,repository,from_run_id,to_run_id,from_commit,to_commit," 
-                    "logical_id,old_snapshot_id,new_snapshot_id,change_type,path_changed,name_changed," 
+                    "insert into code_symbol_changes("
+                    "project_id,owner_id,repository,from_run_id,to_run_id,from_commit,to_commit,"
+                    "logical_id,old_snapshot_id,new_snapshot_id,change_type,path_changed,name_changed,"
                     "signature_changed,body_changed,confidence) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         project_id,
@@ -602,14 +651,19 @@ class SymbolEvolutionService:
                         match.confidence,
                     ),
                 )
-                automatic_links = (
+                for relation, target_type, target_id, target_ref, evidence_hash in (
                     ("defined_in", "file", symbol.path, symbol.path, symbol.file_sha256),
-                    ("observed_at", "commit", snapshot.commit_sha, ref, _digest(snapshot.commit_sha)),
-                )
-                for relation, target_type, target_id, target_ref, evidence_hash in automatic_links:
+                    (
+                        "observed_at",
+                        "commit",
+                        snapshot.commit_sha,
+                        ref,
+                        _digest(snapshot.commit_sha),
+                    ),
+                ):
                     connection.execute(
-                        "insert or ignore into code_symbol_links(" 
-                        "project_id,owner_id,repository,logical_id,snapshot_id,relation_type,target_type," 
+                        "insert or ignore into code_symbol_links("
+                        "project_id,owner_id,repository,logical_id,snapshot_id,relation_type,target_type,"
                         "target_id,target_ref,verification_state,evidence_sha256) values(?,?,?,?,?,?,?,?,?,?,?)",
                         (
                             project_id,
@@ -629,9 +683,9 @@ class SymbolEvolutionService:
             for old in deleted:
                 changes["deleted"] += 1
                 connection.execute(
-                    "insert into code_symbol_changes(" 
-                    "project_id,owner_id,repository,from_run_id,to_run_id,from_commit,to_commit," 
-                    "logical_id,old_snapshot_id,new_snapshot_id,change_type,path_changed,name_changed," 
+                    "insert into code_symbol_changes("
+                    "project_id,owner_id,repository,from_run_id,to_run_id,from_commit,to_commit,"
+                    "logical_id,old_snapshot_id,new_snapshot_id,change_type,path_changed,name_changed,"
                     "signature_changed,body_changed,confidence) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         project_id,
@@ -653,12 +707,11 @@ class SymbolEvolutionService:
                     ),
                 )
 
-            for logical_id, snapshot_id, test_path, evidence_hash in self._test_links(
-                index, logical_by_source
-            ):
+            test_links = self._test_links(index, logical_by_source)
+            for logical_id, snapshot_id, test_path, evidence_hash in test_links:
                 connection.execute(
-                    "insert or ignore into code_symbol_links(" 
-                    "project_id,owner_id,repository,logical_id,snapshot_id,relation_type,target_type," 
+                    "insert or ignore into code_symbol_links("
+                    "project_id,owner_id,repository,logical_id,snapshot_id,relation_type,target_type,"
                     "target_id,target_ref,verification_state,evidence_sha256) values(?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         project_id,
@@ -685,7 +738,7 @@ class SymbolEvolutionService:
                 "changes": dict(sorted(changes.items())),
                 "symbol_count": len(matched),
                 "deleted_count": len(deleted),
-                "test_links": len(self._test_links(index, logical_by_source)),
+                "test_links": len(test_links),
             }
         except Exception:
             connection.rollback()
@@ -713,7 +766,7 @@ class SymbolEvolutionService:
         rows = connection.execute(
             "select logical_id,name,qualified_name,created_at from code_symbol_snapshots "
             "where owner_id=? and project_id=? and repository=? and (name=? or qualified_name=?) "
-            "order by created_at desc limit 20",
+            "order by created_at desc, rowid desc limit 20",
             (self.owner_id, project_id, repository, needle, needle),
         ).fetchall()
         logical_ids = list(dict.fromkeys(str(row["logical_id"]) for row in rows))
@@ -731,7 +784,11 @@ class SymbolEvolutionService:
         latest: Mapping[str, Any] | None,
         latest_change: Mapping[str, Any] | None,
     ) -> str:
-        if latest_change and latest_change.get("change_type") == "deleted" and not latest_change.get("new_snapshot_id"):
+        if (
+            latest_change
+            and latest_change.get("change_type") == "deleted"
+            and not latest_change.get("new_snapshot_id")
+        ):
             return "missing_source"
         if latest is None:
             return "missing_source"
@@ -760,7 +817,7 @@ class SymbolEvolutionService:
         tokenizer: str | TokenCounter | None = "auto",
         model: str | None = None,
     ) -> dict[str, Any]:
-        """Return bounded snapshots, changes and typed evidence with explicit current/stale state."""
+        """Return bounded snapshots, changes and typed evidence with explicit state."""
         if not 1 <= limit <= _MAX_HISTORY_LIMIT:
             raise ValueError(f"limit must be between 1 and {_MAX_HISTORY_LIMIT}")
         if token_budget < 256:
@@ -774,28 +831,28 @@ class SymbolEvolutionService:
             snapshots = [
                 dict(row)
                 for row in connection.execute(
-                    "select id,run_id,commit_sha,ref,logical_id,path,name,qualified_name,kind,language," 
-                    "line,end_line,signature,signature_sha256,body_sha256,file_sha256,first_seen_commit," 
+                    "select id,run_id,commit_sha,ref,logical_id,path,name,qualified_name,kind,language,"
+                    "line,end_line,signature,signature_sha256,body_sha256,file_sha256,first_seen_commit,"
                     "verification_state,created_at from code_symbol_snapshots "
                     "where owner_id=? and project_id=? and repository=? and logical_id=? "
-                    "order by created_at desc limit ?",
+                    "order by created_at desc, rowid desc limit ?",
                     (self.owner_id, project_id, root, logical_id, limit),
                 ).fetchall()
             ]
             changes = [
                 dict(row)
                 for row in connection.execute(
-                    "select from_commit,to_commit,change_type,path_changed,name_changed,signature_changed," 
-                    "body_changed,confidence,created_at from code_symbol_changes "
-                    "where owner_id=? and project_id=? and repository=? and logical_id=? "
-                    "order by created_at desc limit ?",
+                    "select id,old_snapshot_id,new_snapshot_id,from_commit,to_commit,change_type,"
+                    "path_changed,name_changed,signature_changed,body_changed,confidence,created_at "
+                    "from code_symbol_changes where owner_id=? and project_id=? and repository=? "
+                    "and logical_id=? order by created_at desc, rowid desc limit ?",
                     (self.owner_id, project_id, root, logical_id, limit),
                 ).fetchall()
             ]
             links = [
                 dict(row)
                 for row in connection.execute(
-                    "select id,relation_type,target_type,target_id,target_ref,verification_state," 
+                    "select id,relation_type,target_type,target_id,target_ref,verification_state,"
                     "evidence_sha256,metadata,created_at,updated_at from code_symbol_links "
                     "where owner_id=? and project_id=? and repository=? and logical_id=? "
                     "order by target_type,relation_type,target_id limit ?",
@@ -876,7 +933,7 @@ class SymbolEvolutionService:
             rows = [
                 dict(row)
                 for row in connection.execute(
-                    "select logical_id,old_snapshot_id,new_snapshot_id,change_type,path_changed," 
+                    "select logical_id,old_snapshot_id,new_snapshot_id,change_type,path_changed,"
                     "name_changed,signature_changed,body_changed,confidence,created_at "
                     "from code_symbol_changes where owner_id=? and project_id=? and repository=? "
                     "and from_commit=? and to_commit=? order by change_type,logical_id limit ?",
@@ -906,7 +963,7 @@ class SymbolEvolutionService:
         target_id: str,
         relation_type: str = "related_to",
     ) -> dict[str, Any]:
-        """Create a typed verified decision/task link only after validating project scope."""
+        """Create a typed verified decision/task link after validating project scope."""
         normalized_type = target_type.strip().lower()
         table = _MANUAL_TARGET_TABLES.get(normalized_type)
         if table is None:
@@ -926,17 +983,17 @@ class SymbolEvolutionService:
                     f"{normalized_type} target does not exist inside active owner/project scope"
                 )
             latest = connection.execute(
-                "select id from code_symbol_snapshots where owner_id=? and project_id=? and repository=? "
-                "and logical_id=? order by created_at desc limit 1",
+                "select id from code_symbol_snapshots where owner_id=? and project_id=? "
+                "and repository=? and logical_id=? order by created_at desc, rowid desc limit 1",
                 (self.owner_id, project_id, root, logical_id),
             ).fetchone()
             evidence_hash = _digest(logical_id, normalized_type, target_id, relation_type)
             connection.execute(
-                "insert into code_symbol_links(project_id,owner_id,repository,logical_id,snapshot_id," 
+                "insert into code_symbol_links(project_id,owner_id,repository,logical_id,snapshot_id,"
                 "relation_type,target_type,target_id,target_ref,verification_state,evidence_sha256) "
                 "values(?,?,?,?,?,?,?,?,?,?,?) "
                 "on conflict(owner_id,project_id,repository,logical_id,relation_type,target_type,target_id) "
-                "do update set snapshot_id=excluded.snapshot_id,verification_state='verified'," 
+                "do update set snapshot_id=excluded.snapshot_id,verification_state='verified',"
                 "evidence_sha256=excluded.evidence_sha256,updated_at=datetime('now')",
                 (
                     project_id,
@@ -1014,9 +1071,7 @@ class SymbolEvolutionService:
 
 def build_symbol_evolution_tools(settings: RuntimeSettings) -> tuple[Any, ...]:
     """Build local SQLite symbol-evolution MCP tools from validated runtime settings."""
-    if settings.backend != "sqlite":
-        return ()
-    if not settings.owner_id:
+    if settings.backend != "sqlite" or not settings.owner_id:
         return ()
     service = SymbolEvolutionService(
         settings.sqlite_path,
@@ -1096,16 +1151,13 @@ def build_symbol_evolution_tools(settings: RuntimeSettings) -> tuple[Any, ...]:
     ) -> dict[str, Any]:
         return service.invalidate_link(project_id, link_id, state=state, reason=reason)
 
-    tools = (
+    return (
         capture_symbol_snapshot,
         get_symbol_history,
         compare_symbol_commits,
         link_symbol_memory,
         invalidate_symbol_evidence,
     )
-    for tool in tools:
-        tool.__name__ = tool.__name__
-    return tools
 
 
 def install_symbol_evolution(server_module: Any, settings: RuntimeSettings) -> tuple[Any, ...]:
