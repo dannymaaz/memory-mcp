@@ -89,6 +89,31 @@ def test_register_updates_fastmcp_manager_tool_without_duplicate_decorator() -> 
     assert len(module.TOOL_SCHEMAS) == 1
 
 
+def test_register_works_with_installed_fastmcp() -> None:
+    from mcp.server.fastmcp import FastMCP
+
+    server = FastMCP(name="registry-test")
+    module = _module(server)
+    registry = ToolRegistry(module)
+
+    def first(value: str) -> str:
+        return f"first:{value}"
+
+    def second(value: str) -> str:
+        return f"second:{value}"
+
+    registry.register("real_sample", "Real FastMCP sample", first)
+    registry.register("real_sample", "Updated real FastMCP sample", second)
+
+    managed = server._tool_manager._tools["real_sample"]
+    callback = getattr(managed, "fn", getattr(managed, "function", None))
+    assert callback is second
+    assert module.TOOL_HANDLERS["real_sample"] is second
+    assert module.TOOL_SCHEMAS == [
+        {"name": "real_sample", "description": "Updated real FastMCP sample"}
+    ]
+
+
 def test_register_removes_legacy_duplicate_schemas() -> None:
     server = FakeFastMCP()
     module = _module(server)
