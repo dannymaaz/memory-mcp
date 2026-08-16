@@ -67,6 +67,8 @@ jobs:
         run: python scripts/evaluate_repository_retrieval.py
       - name: Report persistent symbol evolution metrics
         run: python scripts/evaluate_symbol_evolution.py
+      - name: Enforce Context Compiler quality thresholds
+        run: python scripts/evaluate_context_quality.py
 
   release-artifacts:
     name: Release artifacts · ${{ matrix.os }}
