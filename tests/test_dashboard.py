@@ -75,9 +75,51 @@ def _storage_with_tasks(tmp_path) -> tuple[SQLiteStorage, dict[str, object], dic
     return storage, first, second
 
 
+def _add_foreign_owner(storage: SQLiteStorage) -> dict[str, object]:
+    workspace = storage.insert(
+        "workspaces",
+        {"owner_id": "owner-2", "name": "Foreign", "slug": "foreign-owner"},
+    )
+    project = storage.insert(
+        "projects",
+        {
+            "workspace_id": workspace["id"],
+            "owner_id": "owner-2",
+            "name": "Foreign project",
+            "slug": "foreign-project",
+        },
+    )
+    storage.insert(
+        "tasks",
+        {
+            "project_id": project["id"],
+            "owner_id": "owner-2",
+            "title": "Foreign owner private task",
+            "status": "blocked",
+        },
+    )
+    return project
+
+
+def _serve(storage: SQLiteStorage, *, owner_id: str | None = None):
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        build_handler(storage, row_limit=10, owner_id=owner_id),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
 def test_dashboard_rejects_remote_binding(tmp_path) -> None:
     config = DashboardConfig(host="0.0.0.0", sqlite_path=tmp_path / "memory.db")
     with pytest.raises(ValueError, match="localhost"):
+        config.validate()
+
+
+def test_dashboard_rejects_empty_explicit_owner(tmp_path) -> None:
+    config = DashboardConfig(owner_id="   ", sqlite_path=tmp_path / "memory.db")
+    with pytest.raises(ValueError, match="owner_id"):
         config.validate()
 
 
@@ -138,9 +180,7 @@ def test_dashboard_html_escapes_stored_content() -> None:
 
 def test_dashboard_http_endpoints_and_security_headers(tmp_path) -> None:
     storage, first, _ = _storage_with_tasks(tmp_path)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), build_handler(storage, row_limit=10))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    server, thread = _serve(storage)
     try:
         base = f"http://127.0.0.1:{server.server_port}"
         with urlopen(f"{base}/api/snapshot?tables=tasks&project_id={first['id']}&limit=1", timeout=5) as response:
@@ -171,6 +211,96 @@ def test_dashboard_http_endpoints_and_security_headers(tmp_path) -> None:
             assert b"table,record" in response.read()
         with pytest.raises(HTTPError) as exc_info:
             urlopen(f"{base}/api/snapshot?tables=secrets", timeout=5)
+        assert exc_info.value.code == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_operational_http_infers_single_owner_and_stays_bounded(tmp_path) -> None:
+    storage, first, _ = _storage_with_tasks(tmp_path)
+    server, thread = _serve(storage)
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urlopen(f"{base}/api/operational/projects?limit=1", timeout=5) as response:
+            overview = json.loads(response.read())
+            assert response.status == 200
+            assert response.headers["Cache-Control"] == "no-store"
+            assert overview["read_only"] is True
+            assert len(overview["projects"]) == 1
+            assert "owner_id" not in json.dumps(overview)
+        with urlopen(
+            f"{base}/api/operational/graph?project_id={first['id']}&limit=5", timeout=5
+        ) as response:
+            graph = json.loads(response.read())
+            assert graph["read_only"] is True
+            assert len(graph["nodes"]) <= 5
+            assert len(graph["edges"]) <= 15
+            assert all("details" not in node for node in graph["nodes"])
+        with urlopen(
+            f"{base}/api/operational/export.json?project_id={first['id']}&limit=4", timeout=5
+        ) as response:
+            exported = json.loads(response.read())
+            assert len(exported["nodes"]) <= 4
+        with urlopen(f"{base}/galaxy/operational?project_id={first['id']}&limit=5", timeout=5) as response:
+            html_payload = response.read().decode()
+            assert response.headers.get_content_type() == "text/html"
+            assert "script-src 'unsafe-inline'" in response.headers["Content-Security-Policy"]
+            assert "Knowledge Galaxy" in html_payload
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_operational_http_requires_explicit_owner_for_multi_owner_database(tmp_path) -> None:
+    storage, _, _ = _storage_with_tasks(tmp_path)
+    _add_foreign_owner(storage)
+    server, thread = _serve(storage)
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(f"{base}/api/operational/projects", timeout=5)
+        assert exc_info.value.code == 400
+        assert "multiple owners" in exc_info.value.read().decode()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_operational_http_owner_scope_blocks_foreign_project(tmp_path) -> None:
+    storage, first, _ = _storage_with_tasks(tmp_path)
+    foreign = _add_foreign_owner(storage)
+    server, thread = _serve(storage, owner_id="owner-1")
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urlopen(f"{base}/api/operational/projects", timeout=5) as response:
+            overview = json.loads(response.read())
+            ids = {item["project_id"] for item in overview["projects"]}
+            assert str(first["id"]) in ids
+            assert str(foreign["id"]) not in ids
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(f"{base}/api/operational/graph?project_id={foreign['id']}", timeout=5)
+        assert exc_info.value.code == 400
+        assert "owner scope" in exc_info.value.read().decode()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_operational_graph_requires_project_and_valid_boolean(tmp_path) -> None:
+    storage, _, _ = _storage_with_tasks(tmp_path)
+    server, thread = _serve(storage)
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(f"{base}/api/operational/graph", timeout=5)
+        assert exc_info.value.code == 400
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(f"{base}/api/operational/projects?changed_only=maybe", timeout=5)
         assert exc_info.value.code == 400
     finally:
         server.shutdown()
