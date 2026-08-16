@@ -64,14 +64,15 @@ Delivered:
 
 See [CONTINUATION.md](CONTINUATION.md).
 
-### Deterministic keyset pagination — 🟡 In review
+### Deterministic keyset pagination — ✅ Complete
 
 **Notion:** MEM-30  
-**GitHub:** Issue #72 / PR #73
+**GitHub:** Issue #72 / PR #73  
+**Gate:** Quality #306 on the final functional/documented implementation before state-only reconciliation.
 
 PR #73 replaces new high-volume all-row/offset-style reads with a stable bounded SQLite keyset contract while keeping historical `select()` compatibility.
 
-Delivered in the branch:
+Delivered:
 
 - `StoragePage` with default 50 / hard max 200;
 - opaque versioned cursor;
@@ -93,28 +94,15 @@ Regression fixture:
 - 50 pages of 200;
 - one new matching row inserted after page 1.
 
-The gate requires exact traversal without duplicates/skips/foreign rows, stable snapshot semantics and latency ceilings of 5,000 ms total / 1,000 ms per page. Initial Ubuntu evidence is ~692 ms total with ~19.8 ms maximum page; no new index/migration is justified by current evidence.
+Quality #306 verified exact traversal without duplicates/skips/foreign rows, stable snapshot semantics, the complete Python 3.11–3.13 × Ubuntu/Windows/macOS matrix, reference evaluators, dependency audit and wheel/sdist upgrade checks. Observed pagination traversal remained far below the 5,000 ms total / 1,000 ms per-page guardrails; current evidence does not justify a new index/migration.
 
 See [PAGINATION.md](PAGINATION.md).
-
-Remaining before MEM-30 is complete:
-
-- [x] storage keyset contract;
-- [x] same-timestamp + concurrent-insert regressions;
-- [x] cursor/scope/identifier fail-closed tests;
-- [x] MCP history integration;
-- [x] Dashboard paginated drill-down;
-- [x] security redaction hardening;
-- [x] cross-platform benchmark wired into CI;
-- [x] public pagination contract;
-- [ ] exact final documentation HEAD passes the complete Quality matrix;
-- [ ] PR #73 merged and MEM-30 marked complete.
 
 ### Dashboard operational completion — ⬜ Remaining subset
 
 **Notion:** MEM-12
 
-Much of the original Dashboard scope is already delivered through PR #16, confirmed deletion, PR #68 operational Galaxy and PR #73 pagination. After MEM-30 merges, MEM-12 should retain only genuine remaining UX/maintenance work:
+Much of the original Dashboard scope is already delivered through PR #16, confirmed deletion, PR #68 operational Galaxy and PR #73 pagination. MEM-12 now retains only genuine remaining UX/maintenance work:
 
 - explicit backup/health/storage/verification/sensitivity cards where useful;
 - clear empty/loading/error states;
@@ -145,7 +133,7 @@ Already complete: package build, release artifacts, checksums, clean installs, u
 
 **Externally blocked:** PyPI Trusted Publishing must be configured for the repository/account. After PyPI publication is public, MCP Registry publication can proceed. Do not treat this external dependency as unfinished application code.
 
-MEM-17 should be reconciled after PR #73 to separate already-delivered distribution/recovery work from any still-desired optional Docker/deployment documentation.
+MEM-17 still needs a product-scope decision separating optional Docker/deployment documentation from the local-first core.
 
 ## Product scope decision — 🚫 No collaborative SaaS
 
@@ -173,8 +161,8 @@ A roadmap item is not complete until:
 
 ## Current recommended order
 
-1. Finish exact-head Quality and merge **PR #73 / MEM-30**.
-2. Reconcile **MEM-12 Dashboard** so only remaining UX/maintenance gaps stay open.
+1. Merge the state-reconciled **PR #73 / MEM-30** after its final documentation-only exact-head Quality passes.
+2. Complete the remaining **MEM-12 Dashboard** maintenance/UX subset.
 3. Implement **MEM-29 Application container + Tool Registry** incrementally.
 4. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
 5. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.
