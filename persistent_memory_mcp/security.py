@@ -38,6 +38,23 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+_SENSITIVE_MAPPING_KEYS = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "authorization",
+        "credential",
+        "credentials",
+        "password",
+        "passwd",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "token",
+        "access_token",
+    }
+)
+
 _INSTRUCTION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)\b(ignore|disregard|override)\b.{0,40}\b(instructions?|rules?|policy)\b"),
     re.compile(r"(?i)\b(system|developer)\s+(message|prompt)\b"),
@@ -75,11 +92,17 @@ def _redact_secrets(value: str) -> tuple[str, tuple[str, ...]]:
     return sanitized, tuple(redactions)
 
 
-def redact_sensitive_value(value: Any) -> RedactedValue:
-    """Recursively redact secret-bearing strings while preserving container shape.
+def _normalized_mapping_key(value: Any) -> str:
+    return str(value).strip().casefold().replace("-", "_")
 
-    Mapping keys are intentionally left unchanged. Lists and tuples retain their
-    original container type. Other values pass through without modification.
+
+def redact_sensitive_value(value: Any) -> RedactedValue:
+    """Recursively redact secret-bearing values while preserving container shape.
+
+    Strings are inspected by known secret patterns. Mapping values whose exact key is
+    credential-bearing (for example ``token`` or ``password``) are redacted even when
+    the value itself does not resemble a provider-specific secret. Mapping keys remain
+    unchanged so callers retain the original payload shape.
     """
 
     if isinstance(value, str):
@@ -90,6 +113,10 @@ def redact_sensitive_value(value: Any) -> RedactedValue:
         redactions: list[str] = []
         clean: dict[Any, Any] = {}
         for key, item in value.items():
+            if _normalized_mapping_key(key) in _SENSITIVE_MAPPING_KEYS and item not in (None, ""):
+                clean[key] = "[REDACTED:sensitive_field]"
+                redactions.append("sensitive_field")
+                continue
             result = redact_sensitive_value(item)
             clean[key] = result.value
             redactions.extend(result.redactions)
