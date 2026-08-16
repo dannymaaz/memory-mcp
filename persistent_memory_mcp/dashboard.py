@@ -19,6 +19,8 @@ from urllib.parse import parse_qs, urlparse
 from .galaxy_view import render_galaxy_view
 from .knowledge_graph import build_knowledge_graph, compact_graph_context
 from .operational_map import OperationalMapLimits, OperationalMapService
+from .pagination import MAX_PAGE_SIZE
+from .security import redact_sensitive_value
 from .storage import SQLiteStorage
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -163,6 +165,97 @@ def dashboard_snapshot(
     }
 
 
+def _resolve_operational_owner(storage: SQLiteStorage, configured_owner: str | None) -> str:
+    configured = str(configured_owner or "").strip()
+    if configured:
+        return configured
+    with storage.connect() as connection:
+        rows = connection.execute(
+            "select distinct owner_id from projects where owner_id is not null and trim(owner_id) != '' "
+            "order by owner_id asc limit 2"
+        ).fetchall()
+    owners = [str(row[0]) for row in rows]
+    if len(owners) == 1:
+        return owners[0]
+    if not owners:
+        raise ValueError("operational owner is not configured and no project owner can be inferred")
+    raise ValueError("operational owner must be configured when multiple owners exist")
+
+
+def dashboard_table_page(
+    storage: SQLiteStorage,
+    *,
+    table: str,
+    limit: int = 50,
+    cursor: str | None = None,
+    project_id: str | None = None,
+    owner_id: str | None = None,
+) -> dict[str, Any]:
+    """Return one owner-scoped deterministic table page for Dashboard drill-down."""
+    if table not in _DASHBOARD_TABLES:
+        raise ValueError("unsupported dashboard table")
+    if table not in storage.allowed_tables:
+        raise ValueError(f"dashboard table {table} does not support keyset pagination")
+    owner = _resolve_operational_owner(storage, owner_id)
+    page_limit = min(int(limit), MAX_PAGE_SIZE)
+    if page_limit < 1:
+        raise ValueError("limit must be positive")
+
+    with storage.connect() as connection:
+        if not _table_exists(connection, table):
+            raise ValueError(f"dashboard table {table} does not exist")
+        columns = _table_columns(connection, table)
+        filters: dict[str, Any] = {}
+        if "owner_id" in columns:
+            filters["owner_id"] = owner
+        if project_id and "project_id" in columns:
+            project_row = connection.execute(
+                "select 1 from projects where id=? and owner_id=?",
+                (project_id, owner),
+            ).fetchone()
+            if project_row is None:
+                raise ValueError("project does not exist inside the active owner scope")
+            filters["project_id"] = project_id
+        order_by = _order_column(columns)
+        if order_by in {"rowid", "id"}:
+            raise ValueError(f"dashboard table {table} lacks a stable timestamp order column")
+        where_sql = ""
+        params: list[Any] = []
+        if filters:
+            where_sql = " where " + " and ".join(f'"{key}" = ?' for key in filters)
+            params.extend(filters.values())
+        total = int(
+            connection.execute(
+                f'select count(*) from "{table}"{where_sql}',
+                params,
+            ).fetchone()[0]
+        )
+
+    page = storage.select_page(
+        table,
+        filters,
+        limit=page_limit,
+        cursor=cursor,
+        order_by=order_by,
+        descending=True,
+    )
+    payload = {
+        "table": table,
+        "project_id": project_id,
+        "records": page.items,
+        "total_count": total,
+        "returned_count": len(page.items),
+        "has_more": page.has_more,
+        "next_cursor": page.next_cursor,
+        "cursor_version": page.cursor_version,
+        "limit": page.limit,
+        "order_by": page.order_by,
+        "descending": page.descending,
+        "read_only": True,
+    }
+    return redact_sensitive_value(payload).value
+
+
 def export_snapshot(snapshot: Mapping[str, Any], *, export_format: str) -> tuple[bytes, str]:
     """Export the already-bounded snapshot without exposing local filesystem paths."""
     if export_format == "json":
@@ -190,15 +283,21 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
         f"<article><strong>{html.escape(str(name))}</strong><span>{int(value)}</span></article>"
         for name, value in counts.items()
     )
+    query = html.escape(str(filters.get("query") or ""), quote=True)
+    project = html.escape(str(filters.get("project_id") or ""), quote=True)
     sections: list[str] = []
     for name, rows in tables.items():
         body = "".join(
             "<li><code>" + html.escape(json.dumps(row, ensure_ascii=False, default=str)) + "</code></li>"
             for row in rows
         ) or "<li>No records</li>"
-        sections.append(f"<section><h2>{html.escape(str(name))}</h2><ol>{body}</ol></section>")
-    query = html.escape(str(filters.get("query") or ""), quote=True)
-    project = html.escape(str(filters.get("project_id") or ""), quote=True)
+        page_href = f"/api/table-page?table={html.escape(str(name), quote=True)}"
+        if project:
+            page_href += f"&amp;project_id={project}"
+        sections.append(
+            f"<section><h2>{html.escape(str(name))}</h2>"
+            f'<a href="{page_href}">Browse paginated JSON</a><ol>{body}</ol></section>'
+        )
     galaxy_href = "/galaxy" + (f"?project_id={project}" if project else "")
     operational_href = (
         f"/galaxy/operational?project_id={project}" if project else "/api/operational/projects"
@@ -258,23 +357,6 @@ def _build_graph(
         max_nodes=min(limit, 500),
         max_edges=min(limit * 3, 1500),
     )
-
-
-def _resolve_operational_owner(storage: SQLiteStorage, configured_owner: str | None) -> str:
-    configured = str(configured_owner or "").strip()
-    if configured:
-        return configured
-    with storage.connect() as connection:
-        rows = connection.execute(
-            "select distinct owner_id from projects where owner_id is not null and trim(owner_id) != '' "
-            "order by owner_id asc limit 2"
-        ).fetchall()
-    owners = [str(row[0]) for row in rows]
-    if len(owners) == 1:
-        return owners[0]
-    if not owners:
-        raise ValueError("operational owner is not configured and no project owner can be inferred")
-    raise ValueError("operational owner must be configured when multiple owners exist")
 
 
 def _operational_limits(limit: int) -> OperationalMapLimits:
@@ -377,6 +459,23 @@ def build_handler(
                             operational, ensure_ascii=False, default=str, indent=2
                         ).encode()
                         self._send_payload(payload, "application/json; charset=utf-8")
+                    return
+
+                if parsed.path == "/api/table-page":
+                    table = params.get("table", [""])[0].strip()
+                    cursor = params.get("cursor", [""])[0].strip() or None
+                    table_page = dashboard_table_page(
+                        storage,
+                        table=table,
+                        limit=min(limit, MAX_PAGE_SIZE),
+                        cursor=cursor,
+                        project_id=project_id,
+                        owner_id=owner_id,
+                    )
+                    payload = json.dumps(
+                        table_page, ensure_ascii=False, default=str, indent=2
+                    ).encode()
+                    self._send_payload(payload, "application/json; charset=utf-8")
                     return
 
                 selected_tables = _parse_tables(params.get("tables", [""])[0])

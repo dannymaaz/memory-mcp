@@ -10,6 +10,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
+from .pagination import (
+    CursorBoundary,
+    StoragePage,
+    decode_cursor,
+    encode_cursor,
+    normalize_page_size,
+    query_fingerprint,
+)
+
 JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
 
 
@@ -31,7 +40,22 @@ class StorageAdapter(Protocol):
 
     def initialize(self) -> None: ...
 
-    def select(self, table: str, filters: Mapping[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    def select(
+        self,
+        table: str,
+        filters: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def select_page(
+        self,
+        table: str,
+        filters: Mapping[str, Any] | None = None,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        order_by: str = "created_at",
+        descending: bool = True,
+    ) -> StoragePage: ...
 
     def insert(self, table: str, payload: Mapping[str, Any]) -> dict[str, Any]: ...
 
@@ -44,7 +68,14 @@ class StorageAdapter(Protocol):
 
     def delete(self, table: str, filters: Mapping[str, Any]) -> int: ...
 
-    def delete_ids(self, table: str, record_ids: Iterable[str], *, owner_id: str, project_id: str) -> int: ...
+    def delete_ids(
+        self,
+        table: str,
+        record_ids: Iterable[str],
+        *,
+        owner_id: str,
+        project_id: str,
+    ) -> int: ...
 
     def healthcheck(self) -> tuple[bool, str]: ...
 
@@ -70,6 +101,17 @@ _CONFLICT_COLUMNS: dict[str, tuple[str, ...]] = {
         "target_id",
     ),
 }
+
+_PAGE_ORDER_COLUMNS = frozenset(
+    {
+        "created_at",
+        "updated_at",
+        "started_at",
+        "captured_at",
+        "deployed_at",
+        "applied_at",
+    }
+)
 
 
 class SQLiteStorage:
@@ -179,14 +221,126 @@ class SQLiteStorage:
         if not filters:
             return "", []
         clauses = [f'"{key}" = ?' for key in filters]
-        return " where " + " and ".join(clauses), [SQLiteStorage._encode(value) for value in filters.values()]
+        return " where " + " and ".join(clauses), [
+            SQLiteStorage._encode(value) for value in filters.values()
+        ]
 
-    def select(self, table: str, filters: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    def select(
+        self,
+        table: str,
+        filters: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Historical unbounded read kept for compatibility with existing callers."""
         table = self._validate_table(table)
         where_sql, params = self._where(filters)
         with self.connect() as connection:
-            rows = connection.execute(f'select * from "{table}"{where_sql}', params).fetchall()
+            rows = connection.execute(
+                f'select * from "{table}"{where_sql}',
+                params,
+            ).fetchall()
         return [self._decode_row(row) for row in rows]
+
+    def select_page(
+        self,
+        table: str,
+        filters: Mapping[str, Any] | None = None,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        order_by: str = "created_at",
+        descending: bool = True,
+    ) -> StoragePage:
+        """Read one stable keyset page without loading the full result set."""
+        table = self._validate_table(table)
+        page_size = normalize_page_size(limit)
+        active_filters = dict(filters or {})
+        if order_by not in _PAGE_ORDER_COLUMNS:
+            raise ValueError("unsupported pagination order column")
+
+        fingerprint = query_fingerprint(
+            table=table,
+            filters=active_filters,
+            order_by=order_by,
+            descending=descending,
+        )
+        boundary = decode_cursor(cursor, expected_fingerprint=fingerprint) if cursor else None
+
+        with self.connect() as connection:
+            columns = {
+                str(row[1])
+                for row in connection.execute(f'pragma table_info("{table}")').fetchall()
+            }
+            if "id" not in columns or order_by not in columns:
+                raise ValueError(f"table {table} does not support {order_by} pagination")
+            invalid_filters = sorted(set(active_filters) - columns)
+            if invalid_filters:
+                raise ValueError(
+                    "unsupported pagination filter column(s): " + ", ".join(invalid_filters)
+                )
+
+            filter_clauses = [f'"{key}" = ?' for key in active_filters]
+            filter_params = [self._encode(value) for value in active_filters.values()]
+            filter_where = ""
+            if filter_clauses:
+                filter_where = " where " + " and ".join(filter_clauses)
+
+            if boundary is None:
+                anchor_row = connection.execute(
+                    f'select coalesce(max(rowid), 0) from "{table}"{filter_where}',
+                    filter_params,
+                ).fetchone()
+                anchor_rowid = int(anchor_row[0] if anchor_row else 0)
+            else:
+                anchor_rowid = boundary.anchor_rowid
+
+            clauses = list(filter_clauses)
+            params = list(filter_params)
+            clauses.append("rowid <= ?")
+            params.append(anchor_rowid)
+            if boundary is not None:
+                comparator = "<" if descending else ">"
+                clauses.append(
+                    f'("{order_by}" {comparator} ? or '
+                    f'("{order_by}" = ? and "id" {comparator} ?))'
+                )
+                params.extend(
+                    [boundary.order_value, boundary.order_value, boundary.record_id]
+                )
+
+            where_sql = " where " + " and ".join(clauses)
+            direction = "desc" if descending else "asc"
+            rows = connection.execute(
+                f'select * from "{table}"{where_sql} '
+                f'order by "{order_by}" {direction}, "id" {direction} limit ?',
+                [*params, page_size + 1],
+            ).fetchall()
+
+        decoded = [self._decode_row(row) for row in rows]
+        has_more = len(decoded) > page_size
+        items = decoded[:page_size]
+        next_cursor = None
+        if has_more and items:
+            last = items[-1]
+            order_value = last.get(order_by)
+            record_id = last.get("id")
+            if order_value is None or record_id is None:
+                raise ValueError("pagination boundary columns cannot be null")
+            next_cursor = encode_cursor(
+                fingerprint=fingerprint,
+                boundary=CursorBoundary(
+                    order_value=str(order_value),
+                    record_id=str(record_id),
+                    anchor_rowid=anchor_rowid,
+                ),
+            )
+        return StoragePage(
+            items=items,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            limit=page_size,
+            order_by=order_by,
+            descending=bool(descending),
+        )
 
     def insert(self, table: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         table = self._validate_table(table)
@@ -198,11 +352,13 @@ class SQLiteStorage:
         values = [self._encode(payload[column]) for column in columns]
         with self.connect() as connection:
             cursor = connection.execute(
-                f'insert into "{table}" ({column_sql}) values ({placeholders})', values
+                f'insert into "{table}" ({column_sql}) values ({placeholders})',
+                values,
             )
             connection.commit()
             row = connection.execute(
-                f'select * from "{table}" where rowid = ?', (cursor.lastrowid,)
+                f'select * from "{table}" where rowid = ?',
+                (cursor.lastrowid,),
             ).fetchone()
         return self._decode_row(row) if row is not None else dict(payload)
 
@@ -227,7 +383,9 @@ class SQLiteStorage:
         conflict_sql = ", ".join(f'"{column}"' for column in conflicts)
         update_columns = [column for column in columns if column not in conflicts]
         if update_columns:
-            update_sql = ", ".join(f'"{column}" = excluded."{column}"' for column in update_columns)
+            update_sql = ", ".join(
+                f'"{column}" = excluded."{column}"' for column in update_columns
+            )
             action = f"do update set {update_sql}"
         else:
             action = "do nothing"
@@ -247,7 +405,9 @@ class SQLiteStorage:
         table = self._validate_table(table)
         if not filters:
             raise ValueError("destructive operations require filters")
-        if table != "workspaces" and ("owner_id" not in filters or "project_id" not in filters):
+        if table != "workspaces" and (
+            "owner_id" not in filters or "project_id" not in filters
+        ):
             raise ValueError("delete requires owner_id and project_id scope")
         where_sql, params = self._where(filters)
         with self.connect() as connection:
@@ -265,7 +425,13 @@ class SQLiteStorage:
     ) -> int:
         """Delete only exact record IDs within an owner/project scope."""
         table = self._validate_table(table)
-        ids = tuple(dict.fromkeys(str(record_id).strip() for record_id in record_ids if str(record_id).strip()))
+        ids = tuple(
+            dict.fromkeys(
+                str(record_id).strip()
+                for record_id in record_ids
+                if str(record_id).strip()
+            )
+        )
         if not ids:
             return 0
         if not owner_id or not project_id:
@@ -355,7 +521,9 @@ class SQLiteClient:
         return SQLiteQuery(self.storage, name)
 
     def rpc(self, _function_name: str, _params: Mapping[str, Any]) -> SQLiteQuery:
-        raise NotImplementedError("SQLite semantic RPC is not available; lexical fallback is used")
+        raise NotImplementedError(
+            "SQLite semantic RPC is not available; lexical fallback is used"
+        )
 
 
 def normalize_backend(value: str | None) -> str:
@@ -369,21 +537,33 @@ def normalize_backend(value: str | None) -> str:
     return normalized
 
 
-def create_storage(backend: str, *, sqlite_path: str | Path | None = None) -> StorageAdapter:
+def create_storage(
+    backend: str,
+    *,
+    sqlite_path: str | Path | None = None,
+) -> StorageAdapter:
     """Create a configured storage adapter without importing remote dependencies."""
 
     normalized = normalize_backend(backend)
     if normalized == "sqlite":
-        storage = SQLiteStorage(sqlite_path or Path.home() / ".memory-mcp" / "memory.db")
+        storage = SQLiteStorage(
+            sqlite_path or Path.home() / ".memory-mcp" / "memory.db"
+        )
         storage.initialize()
         return storage
-    raise ValueError(f"Backend {normalized} uses the existing remote client, not a local adapter")
+    raise ValueError(
+        f"Backend {normalized} uses the existing remote client, not a local adapter"
+    )
 
 
 def create_sqlite_client(path: str | Path | None = None) -> SQLiteClient:
     """Create and initialize the SQLite facade used by the MCP server."""
 
-    resolved = path or os.getenv("SQLITE_PATH") or Path.home() / ".memory-mcp" / "memory.db"
+    resolved = (
+        path
+        or os.getenv("SQLITE_PATH")
+        or Path.home() / ".memory-mcp" / "memory.db"
+    )
     storage = SQLiteStorage(resolved)
     storage.initialize()
     return SQLiteClient(storage)

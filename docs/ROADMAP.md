@@ -1,282 +1,139 @@
 # Persistent Memory MCP delivery roadmap
 
-Persistent Memory MCP is a **local-first personal memory system and Context Compiler for MCP-compatible development agents**. The v0.3 foundation established recoverable SQLite storage, explicit upgrades and cross-platform packaging. The post-v0.3 sequence adds measurable context delivery, bounded repository evidence, persistent code provenance, quality regression gates and an operational project map.
+Persistent Memory MCP is a **local-first personal memory system and Context Compiler for MCP-compatible development agents**. Product scope remains one personal installation, SQLite-first storage, localhost-only operational UI, project/owner isolation and no automatic repository code execution.
 
-This document mirrors the canonical roadmap maintained in Notion. Product scope remains one local installation, localhost-only operational UI, project/owner isolation, no shared workspace roles and no automatic repository code execution.
+This document mirrors the canonical roadmap maintained in Notion.
 
 ## Status legend
 
-- ✅ **Complete** — implemented, integrated, documented and validated by the required delivery gate.
+- ✅ **Complete** — implemented, integrated, documented and validated by the required gate.
 - 🟡 **In review** — implementation exists but the exact final-head gate/merge is still open.
 - ⬜ **Planned** — sequenced work not started yet.
+- ⛔ **Externally blocked** — repository work is ready but completion depends on an external user/account configuration.
 - 🚫 **Out of scope** — intentionally excluded from the product direction.
 
 ## Delivered foundation
 
-### Local data safety and recovery — ✅ Complete foundation
+### Data safety / recovery — ✅
 
-- private SQLite storage with WAL and foreign keys;
+- SQLite WAL + foreign keys;
 - owner/project isolation and secret redaction;
-- WAL-safe backup through SQLite's backup API;
-- SHA-256 backup manifests and integrity verification;
-- read-only `memory-mcp health` diagnostics;
-- two-phase confirmed restore with safety backup and rollback;
-- versioned checksum-verified SQLite migrations;
-- explicit `memory-mcp-migrate` preview/apply flow;
-- fail-closed startup for stale existing schemas;
-- deterministic SQLite connection close semantics.
+- verified SQLite backups and SHA-256 manifests;
+- read-only health diagnostics;
+- two-phase confirmed restore with safety backup/rollback;
+- versioned checksum-verified backup-first migrations;
+- explicit upgrade CLI and fail-closed stale-schema startup;
+- deterministic SQLite connection lifecycle.
 
-### Package and upgrade safety — ✅ Complete foundation
+### Packaging / upgrade safety — ✅
 
-- SQLite-first core dependencies with optional Supabase/PostgreSQL extras;
-- validated immutable RuntimeSettings foundation;
-- Ubuntu, Windows and macOS CI across Python 3.11–3.13;
-- wheel/sdist build and clean-install validation;
-- installed v0.2.0 → current schema migration regression with existing data preserved;
-- release-artifact checksums and backup-first rollback documentation.
+- SQLite-first core with optional Supabase/PostgreSQL extras;
+- immutable validated Settings foundation;
+- Ubuntu/Windows/macOS CI across Python 3.11–3.13;
+- wheel/sdist clean-install validation;
+- installed v0.2.0 → current schema data-preservation regression;
+- release checksums and rollback documentation.
 
-### Memory, search and development intelligence — ✅ Foundation
+### Context Compiler phase — ✅ Complete
 
-- decisions, tasks, warnings, sessions, checkpoints and file memory;
-- hybrid semantic + lexical search with local fallback;
-- persisted embedding lifecycle;
-- Git repository/branch/commit verification;
-- Python/TypeScript/JavaScript/SQL symbol extraction;
-- bounded code-impact graphs;
-- progressive repository map → file → symbol → fragment retrieval;
-- persistent symbol snapshots/evolution with typed evidence;
-- duplicate/contradiction intelligence;
-- deployment history/risk gates;
-- localhost dashboard and bounded Galaxy views.
+1. **Context Packet + token accounting** — PR #60 / MEM-36 / Quality #226.
+2. **Progressive repository retrieval** — PR #62 / MEM-37 / Quality #235.
+3. **Persistent code provenance/symbol evolution** — PR #64 / MEM-38 / Quality #250.
+4. **Context-quality/adversarial regression gates** — PR #66 / MEM-39 / Quality #262.
+5. **Operational project map / risk-oriented Galaxy** — PR #68 / MEM-40 / Quality #282.
 
-Automatic continuation remains a parallel partial capability; it is not allowed to displace the mandatory Context Compiler sequence.
+The umbrella tracker for this five-step phase is closed. No additional numbered Context Compiler milestone should be inferred without a new roadmap decision.
 
-## Post-v0.3 mandatory sequence
+## Post-phase reliability / architecture work
 
-### 1. Versioned Context Packet and real token accounting — ✅ Complete
+### Automatic Continuation Contract — ✅ Complete
 
-**Notion:** MEM-36  
-**GitHub:** Issue #56 / PR #60  
-**Gate:** Quality #226
+**Notion:** MEM-31 + completion of remaining MEM-6 gap  
+**GitHub:** Issue #70 / PR #71  
+**Gate:** Quality #290
 
 Delivered:
 
-- stable Context Packet v1 on the real optimizer/model-routing path;
-- objective, next safe action, provenance and verification state;
-- hard serialized token budget and authoritative final count;
-- tokenizer/model identity with deterministic provider-free fallback;
-- selected/dropped/compressed/token-cost metrics per block;
-- compatibility with historical `build_context()` callers and 256-token requests.
+- owner-scoped repository binding by canonical remote/local root before slug creation;
+- ambiguous strongest binding fails closed;
+- versioned bounded/redacted Continuation Contract inside the existing session-close checkpoint;
+- objective, completed/pending work, blockers, files, tests, next action and Git state;
+- credential-free canonical remote plus bounded root fingerprint rather than absolute path in continuation output;
+- one shared continuation path for explicit close, cross-interface handoff and idle expiry;
+- backward-compatible `resume_project` extension.
 
-Reference fallback measurements against `gpt-4o` / `tiktoken:o200k_base`:
+See [CONTINUATION.md](CONTINUATION.md).
 
-| Fixture | Reference | Deterministic fallback | Error |
-|---|---:|---:|---:|
-| Spanish prose | 69 | 80 | **15.94%** |
-| Source code | 138 | 140 | **1.45%** |
+### Deterministic keyset pagination — ✅ Complete
 
-The guardrail allows ≤40% error on the initial fixtures; the validated worst case is 15.94%.
+**Notion:** MEM-30  
+**GitHub:** Issue #72 / PR #73  
+**Gate:** Quality #306 on the final functional/documented implementation before state-only reconciliation.
 
-### 2. Progressive repository retrieval — ✅ Complete
-
-**Notion:** MEM-37  
-**GitHub:** Issue #61 / PR #62  
-**Gate:** Quality #235
-
-Repository evidence expands in stages instead of loading every source file:
-
-1. compact repository map from `git ls-files`;
-2. deterministic candidate-file ranking with path + bounded local `git grep` evidence;
-3. symbol extraction only from bounded candidates;
-4. bounded graph-neighbor expansion;
-5. exact selected line fragments.
-
-Safety/contract guarantees:
-
-- traversal/root-escape rejection;
-- configured ignore patterns plus code-intelligence excludes;
-- deterministic score ordering and bounded cursor pagination;
-- cursor fingerprints bound to query, Git commit and candidate-file hashes;
-- SHA-256 + Git commit/ref provenance per fragment;
-- secret redaction before fragment emission;
-- explicit file/symbol/neighbor/byte/page/token limits;
-- shared Context Packet token-counter contract;
-- repository code is never executed.
-
-Reference evaluation:
-
-| Metric | Result |
-|---|---:|
-| Supported files mapped | **80** |
-| Candidate files parsed | **6** |
-| Parse fraction | **7.5%** |
-| Selected fragments | **2** |
-| Fragment bytes | **284 B** |
-| Target fragment/file ratio | **5.6%** |
-| Final retrieval tokens | **1,305 / 1,400** |
-
-### 3. Persistent code provenance and symbol evolution — ✅ Complete
-
-**Notion:** MEM-38  
-**GitHub:** Issue #63 / PR #64  
-**Gate:** Quality #250
+PR #73 replaces new high-volume all-row/offset-style reads with a stable bounded SQLite keyset contract while keeping historical `select()` compatibility.
 
 Delivered:
 
-- SQLite schema v2 with symbol snapshot runs, snapshots, classified changes and typed evidence links;
-- migration `0002` through preview → verified backup → transactional apply;
-- clean-HEAD, owner/project/repository-scoped idempotent capture;
-- bounded/redacted signatures and hashes without source bodies;
-- nearest persisted Git ancestor comparison;
-- `added`, `modified`, `moved`, `renamed`, `deleted`, `unchanged` classification;
-- stable logical identity across moves and conservative unique rename matches;
-- deterministic same-second tie-breaking;
-- file/commit/test evidence and validated decision/task links;
-- explicit `verified`, `stale`, `contradicted`, `missing_source`, `unverified` evidence states;
-- bounded symbol-history queries using the shared token-counter contract.
+- `StoragePage` with default 50 / hard max 200;
+- opaque versioned cursor;
+- fingerprint bound to table, filters, order and direction;
+- deterministic timestamp + `id` boundary;
+- first-page rowid anchor that freezes traversal against later inserts;
+- malformed/cross-query cursors fail closed;
+- order/filter identifiers validated against allow lists/schema;
+- MCP history pagination for timeline, sessions, checkpoints, tasks, warnings and decisions;
+- localhost Dashboard `/api/table-page` drill-down using the same storage primitive;
+- owner/project isolation and multi-owner fail-closed behavior;
+- recursive sensitive-field redaction hardening discovered through pagination regressions;
+- cross-platform 10,000-record pagination evaluation wired to reference CI.
 
-The reproducible evaluation covers Python, TypeScript, JavaScript and SQL and validated **1 renamed, 1 moved and 2 modified** symbols while preserving rename identity.
+Regression fixture:
 
-### 4. Context quality and regression guardrails — ✅ Complete
+- 10,000 active-owner records + 200 foreign-owner records;
+- all focus rows share the same timestamp;
+- 50 pages of 200;
+- one new matching row inserted after page 1.
 
-**Notion:** MEM-39  
-**GitHub:** Issue #65 / PR #66  
-**Gate:** Quality #262
+Quality #306 verified exact traversal without duplicates/skips/foreign rows, stable snapshot semantics, the complete Python 3.11–3.13 × Ubuntu/Windows/macOS matrix, reference evaluators, dependency audit and wheel/sdist upgrade checks. Observed pagination traversal remained far below the 5,000 ms total / 1,000 ms per-page guardrails; current evidence does not justify a new index/migration.
 
-Delivered:
+See [PAGINATION.md](PAGINATION.md).
 
-- versioned non-sensitive local coding-task corpus;
-- explicit versioned thresholds;
-- deterministic evaluator over the real progressive retrieval path;
-- file/symbol recall and precision, hard token fit, token savings, provenance coverage and latency metrics;
-- fixture/evaluator/threshold/tokenizer/model identity;
-- unit tests proving deliberate metric degradation fails closed;
-- adversarial cases for expired/untrusted memory, prompt injection, dirty cursors, rename continuity, contradicted evidence and dirty-Git stale evidence;
-- Ubuntu/Windows/macOS quality + adversarial gates.
+### Dashboard operational completion — ⬜ Remaining subset
 
-Initial v1 baseline:
+**Notion:** MEM-12
 
-| Metric | Baseline | Gate |
-|---|---:|---:|
-| File recall@5 | **1.000** | ≥ **1.000** |
-| File precision@5 | **0.200** | ≥ **0.200** |
-| Symbol recall@8 | **1.000** | ≥ **1.000** |
-| Symbol precision@8 | **0.125** | ≥ **0.125** |
-| Token-fit rate | **1.000** | ≥ **1.000** |
-| Token savings | **0.7722** | ≥ **0.400** |
-| Provenance coverage | **1.000** | ≥ **1.000** |
-| Safety pass rate | **1.000** | ≥ **1.000** |
+Much of the original Dashboard scope is already delivered through PR #16, confirmed deletion, PR #68 operational Galaxy and PR #73 pagination. MEM-12 now retains only genuine remaining UX/maintenance work:
 
-The precision floors protect the current baseline; they are not claims of optimal ranking.
+- explicit backup/health/storage/verification/sensitivity cards where useful;
+- clear empty/loading/error states;
+- safe maintenance controls that call existing confirmed backup/restore/delete flows without bypassing confirmation.
 
-### 5. Operational project map / risk-oriented Galaxy — 🟡 In review
+No public/remote dashboard is planned.
 
-**Notion:** MEM-40  
-**GitHub:** Issue #67 / PR #68
+### Application container + MCP Tool Registry — ⬜ Planned
 
-PR #68 converts the existing bounded Galaxy into an operational projection **without adding another repository scanner or graph database**.
+**Notion:** MEM-29
 
-#### Operational read model
+Goal: reduce accumulated runtime ordering/monkey-patching coupling incrementally, not rewrite the server.
 
-`OperationalMapService` composes existing SQLite and persistent `code_symbol_*` evidence into bounded, deterministic views:
+Acceptance direction:
 
-- global owner-scoped project overview;
-- per-project impact graph;
-- project → repository → file → symbol relationships;
-- verified symbol links to tasks, decisions, files/tests/deployments where present;
-- project-level warnings/tasks/decisions;
-- risk and persisted verification state;
-- current-change affected-area projection based only on latest persisted repository snapshot runs.
+- `create_application(settings)` composition root;
+- explicit idempotent Tool Registry;
+- initialization order documented and tested;
+- start by moving Maintenance/Deletion off dynamic wrappers;
+- preserve public tool contracts and current local-first behavior.
 
-The map is read-only and emits compact metadata. It does not return full source bodies, decision/task details, session/checkpoint bodies or absolute repository roots. Short labels pass through existing secret redaction.
+### Distribution / publication — mixed
 
-#### Owner isolation and HTTP surface
+**Notion:** MEM-17 + MEM-33  
+**GitHub:** Issue #53
 
-Operational owner resolution fails closed:
+Already complete: package build, release artifacts, checksums, clean installs, upgrade regressions, GitHub release foundation and recovery documentation.
 
-1. use configured `--owner-id` / `OWNER_ID` when present;
-2. otherwise infer only when exactly one project owner exists;
-3. reject no-owner or ambiguous multi-owner databases instead of mixing data.
+**Externally blocked:** PyPI Trusted Publishing must be configured for the repository/account. After PyPI publication is public, MCP Registry publication can proceed. Do not treat this external dependency as unfinished application code.
 
-New localhost-only endpoints:
-
-```text
-GET /api/operational/projects
-GET /api/operational/graph?project_id=<id>
-GET /api/operational/export.json?project_id=<id>
-GET /galaxy/operational?project_id=<id>
-```
-
-Supported filters include `verification`, `risk` and project-scoped `changed_only`. Existing Dashboard/Galaxy endpoints remain compatible.
-
-#### Risk-oriented Galaxy
-
-Operational mode adds:
-
-- risk filter;
-- verification-state filter;
-- changed-only filter;
-- visible critical/high/medium, stale and contradicted states;
-- changed/missing/risk/verification summary counts;
-- separate operational SVG/PNG export names;
-- existing keyboard/ARIA, drag, zoom, focus and minimap behavior.
-
-#### Bounds and performance gate
-
-`scripts/evaluate_operational_map.py` is part of the cross-platform reference CI jobs. Fixture:
-
-- 20 active-owner projects plus one foreign-owner project;
-- 120 symbols across 12 files;
-- 20 tasks;
-- 24 currently changed symbols concentrated in a bounded affected area.
-
-CI limits: max 20 projects, 180 nodes, 400 edges, 50 records per kind; latency ceiling is a deliberately non-flaky **5,000 ms** for overview/full/changed graph.
-
-Validated structural output is identical across reference platforms:
-
-| Metric | Result |
-|---|---:|
-| Overview projects | **20** |
-| Full graph nodes | **154** |
-| Full graph edges | **173** |
-| Changed-area nodes | **55** |
-| Changed-area edges | **74** |
-
-Observed reference latency:
-
-| Platform | Overview | Full graph | Changed-area graph |
-|---|---:|---:|---:|
-| Ubuntu | **3.04 ms** | **6.26 ms** | **4.35 ms** |
-| Windows | **4.99 ms** | **8.08 ms** | **5.36 ms** |
-| macOS | **5.65 ms** | **8.56 ms** | **4.15 ms** |
-
-These are regression-fixture observations, not production SLA claims. The gate also requires owner isolation, bounds, read-only output, secret redaction, no absolute repository root, no full body fields and a genuinely reduced `changed_only` graph.
-
-Remaining before MEM-40 is complete:
-
-- [x] owner-scoped bounded operational read model;
-- [x] current-change / risk / verification semantics;
-- [x] cross-owner isolation and fail-closed owner resolution;
-- [x] localhost-only operational HTTP endpoints and bounded export;
-- [x] risk-oriented operational Galaxy with legacy compatibility;
-- [x] HTTP/security/UI/read-model regression tests;
-- [x] reproducible cross-platform bounds/latency gate;
-- [x] public operational-map documentation;
-- [ ] README, IMPLEMENTATION_STATUS, `llms.txt` and Notion fully reconciled;
-- [ ] exact final PR #68 HEAD passes complete Quality after documentation sync;
-- [ ] PR #68 merged and MEM-40 marked complete.
-
-See [OPERATIONAL_MAP.md](OPERATIONAL_MAP.md) for the detailed public contract.
-
-## Parallel non-blocking work
-
-These items may receive maintenance fixes after the mandatory phase but should not silently redefine it:
-
-- automatic project resolution and continuation capture;
-- broader embedding/search benchmarks;
-- provider-specific configuration cleanup;
-- optional Supabase/PostgreSQL adapter maintenance;
-- further Dashboard pagination/UX refinements.
+MEM-17 still needs a product-scope decision separating optional Docker/deployment documentation from the local-first core.
 
 ## Product scope decision — 🚫 No collaborative SaaS
 
@@ -284,26 +141,28 @@ Persistent Memory MCP remains:
 
 - one personal installation;
 - local SQLite by default;
-- localhost-only dashboard access;
-- isolated by project and local owner identity;
-- compatible with local MCP clients.
+- localhost-only Dashboard/Galaxy;
+- project/local-owner isolation;
+- compatible with local MCP clients;
+- optional self-managed remote storage adapters without changing the core direction.
 
-Workspace invitations, shared memberships, team-role hierarchies, billing and a public remote collaborative dashboard are not milestones.
+Workspace invitations, shared team roles, billing/organization administration and public collaborative dashboards are not roadmap milestones.
 
-## Definition of done for each roadmap step
+## Definition of done
 
-A step is incomplete until all are true:
+A roadmap item is not complete until:
 
-1. the code path is integrated into the real product rather than only exposed as a helper;
-2. deterministic tests cover success, failure and boundary behavior;
-3. the relevant Ubuntu/Windows/macOS CI gate passes;
-4. measurable evidence is recorded for quality/cost/performance claims;
-5. README, ROADMAP, IMPLEMENTATION_STATUS, public docs and Notion agree;
-6. the implementation does not broaden local-first scope or silently execute destructive/code actions.
+1. the path is integrated into the real product rather than only a helper;
+2. deterministic tests cover success, failure and boundaries;
+3. the relevant Ubuntu/Windows/macOS gate passes;
+4. measurable evidence exists for quality/cost/performance claims;
+5. repository docs and Notion agree;
+6. local-first/safety scope is not silently broadened.
 
 ## Current recommended order
 
-1. Finish documentation synchronization for **PR #68 / MEM-40**.
-2. Freeze the exact final PR #68 HEAD and require the complete Quality matrix.
-3. If green, merge PR #68 and mark MEM-40 complete.
-4. Re-evaluate the post-v0.3 phase definition of done before starting any new numbered milestone; do not invent a new phase without an explicit roadmap decision.
+1. Merge the state-reconciled **PR #73 / MEM-30** after its final documentation-only exact-head Quality passes.
+2. Complete the remaining **MEM-12 Dashboard** maintenance/UX subset.
+3. Implement **MEM-29 Application container + Tool Registry** incrementally.
+4. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
+5. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.
