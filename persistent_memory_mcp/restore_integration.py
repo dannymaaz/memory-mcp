@@ -6,42 +6,14 @@ from typing import Any, Callable
 
 from .maintenance import RestorePlan, RestoreService
 from .settings import RuntimeSettings
-
-
-def _replace_registered_tool(server: Any, name: str, function: Callable[..., Any]) -> None:
-    tools = getattr(server, "_tools", None)
-    if isinstance(tools, dict):
-        tools[name] = function
-    manager = getattr(server, "_tool_manager", None)
-    managed = getattr(manager, "_tools", None)
-    if isinstance(managed, dict) and name in managed:
-        tool = managed[name]
-        if hasattr(tool, "fn"):
-            tool.fn = function
-        elif hasattr(tool, "function"):
-            tool.function = function
-        else:
-            managed[name] = function
-
-
-def _register(server_module: Any, name: str, description: str, function: Callable[..., Any]) -> None:
-    setattr(server_module, name, function)
-    _replace_registered_tool(server_module.server, name, function)
-    try:
-        server_module.server.tool(name=name, description=description)(function)
-    except Exception:
-        pass
-    handlers = getattr(server_module, "TOOL_HANDLERS", None)
-    if isinstance(handlers, dict):
-        handlers[name] = function
-    schemas = getattr(server_module, "TOOL_SCHEMAS", None)
-    if isinstance(schemas, list) and not any(item.get("name") == name for item in schemas):
-        schemas.append({"name": name, "description": description})
+from .tool_registry import ToolRegistry, get_tool_registry
 
 
 def install_verified_restore(
     server_module: Any,
     settings: RuntimeSettings | None = None,
+    *,
+    registry: ToolRegistry | None = None,
 ) -> tuple[Callable[..., Any], Callable[..., Any]]:
     """Install local restore preview and execution tools once."""
     if getattr(server_module, "_verified_restore_installed", False):
@@ -83,14 +55,13 @@ def install_verified_restore(
 
     plan_memory_restore.__name__ = "plan_memory_restore"
     execute_memory_restore.__name__ = "execute_memory_restore"
-    _register(
-        server_module,
+    active_registry = registry or get_tool_registry(server_module)
+    active_registry.register(
         "plan_memory_restore",
         "Previsualiza un restore SQLite verificado y genera una confirmacion ligada al plan.",
         plan_memory_restore,
     )
-    _register(
-        server_module,
+    active_registry.register(
         "execute_memory_restore",
         "Ejecuta un restore SQLite verificado solo con el plan confirmado y sin cambios.",
         execute_memory_restore,
