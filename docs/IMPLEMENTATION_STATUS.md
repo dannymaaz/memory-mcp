@@ -1,15 +1,16 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled during PR #100 / Quality #387 on 2026-08-16. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled during PR #100 / functional Quality #387 on 2026-08-16. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
 The v0.3 technical foundation, the complete five-step Context Compiler phase and the planned post-phase reliability/architecture work are delivered. Post-v0.3 `main` is now migrating deliberately to the MCP Python SDK v2 `MCPServer` API while the immutable v0.3.0 release candidate remains isolated on its previously validated MCP v1 compatibility boundary.
 
-The principal unfinished product work is now **operational publication**, not a missing local feature:
+The principal unfinished product work is now **operational publication**, not a missing local feature or an unresolved distribution-scope decision:
 
 - the immutable v0.3.0 release candidate is validated;
 - the repository-side publication workflow is merged and validated;
+- MEM-17 already fixes the official core distribution scope as local-first/Python-first, with Docker/Render/Railway only optional future self-managed documentation;
 - `v0.3.0` has not yet been tagged/published as a GitHub Release;
 - PyPI Trusted Publisher account configuration and public publication remain external/operational steps;
 - MCP Registry submission follows successful public PyPI validation;
@@ -37,6 +38,7 @@ The principal unfinished product work is now **operational publication**, not a 
 | MCP SDK v2 mainline runtime | In review | Issue #88 / PR #100 / MEM-42 / functional Quality #387 | Fresh exact-head Quality after docs, then merge |
 | Immutable v0.3.0 release candidate | Complete | PR #89 / Quality #361 / `9e0a084d...` | Operational tag/release creation |
 | Repository PyPI publishing path | Complete | PR #91 / Quality #368 / `9f439442...` | External Trusted Publisher + release assets required |
+| Distribution scope decision | Complete | MEM-17 | Optional future self-managed deployment docs only |
 | Public GitHub v0.3.0 release | Pending | Issue #53 | Tag exact release SHA, pass artifact workflow, create release |
 | Public PyPI publication | External/operational | `publish-pypi.yml`, `docs/RELEASING.md` | Configure trust, publish exact assets, smoke-test |
 | MCP Registry publication | Pending after PyPI | MEM-33 / Issue #53 | Stable public package/release URLs first |
@@ -117,7 +119,7 @@ The branch now:
 - validates the actual installed MCP v2 runtime with public tool listing/calling/replacement tests;
 - changes no database/storage schema, Dashboard exposure or destructive-confirmation semantics.
 
-Functional Quality #387 validates the migration matrix before documentation reconciliation. Because README/ROADMAP/IMPLEMENTATION_STATUS updates move the branch HEAD, a fresh full exact-head Quality is required before PR #100 is marked ready and merged.
+Functional Quality #387 validates the migration matrix before documentation reconciliation. README/ROADMAP/IMPLEMENTATION_STATUS and the canonical MEM-17 distribution decision have now been reconciled on the branch; a fresh full exact-head Quality is required before PR #100 is marked ready and merged.
 
 See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
 
@@ -190,9 +192,13 @@ The controlled sequence from [RELEASING.md](RELEASING.md) is now:
 
 Until successful public PyPI evidence exists, README installation must use repository/source installation rather than claiming the package is publicly installable.
 
-## Distribution-scope decision
+## Distribution-scope decision — complete
 
-MEM-17's remaining product decision is documentation-only: optional Docker/Render/Railway-style self-managed deployments may be documented separately, but they are not requirements of the local-first core and must not imply hosted multi-user SaaS support.
+MEM-17 already defines the official distribution boundary: core distribution stays **local-first and Python-first**, with SQLite by default, local MCP clients and localhost-only Dashboard/Galaxy.
+
+Docker, Render, Railway and equivalent platforms are not core requirements or release blockers. They may be documented later only as **self-managed** options where the operator owns network exposure, secrets, storage, TLS and backups. They must not imply an official hosted SaaS, shared workspaces, team roles, billing or a public multi-user Dashboard.
+
+No internal distribution-scope decision remains. MEM-17 and MEM-33 now share only the external publication work tracked by Issue #53.
 
 ## Product scope
 
@@ -203,6 +209,5 @@ Not planned: workspace invitations, team-role hierarchies, billing/organization 
 ## Next engineering order
 
 1. Finish PR #100 / Issue #88 / MEM-42 with a fresh exact-head Quality and merge the MCP v2 mainline migration.
-2. Complete Issue #53 / MEM-33 operational publication: exact tag → artifact gate → GitHub Release → Trusted Publisher → public PyPI smoke test → MCP Registry.
-3. Resolve MEM-17 optional deployment documentation scope without changing the local-first product boundary.
-4. Start no new numbered product phase until public release evidence and project records are synchronized.
+2. Complete Issue #53 / MEM-17 / MEM-33 operational publication: exact tag → artifact gate → GitHub Release → Trusted Publisher → public PyPI smoke test → MCP Registry.
+3. Start no new numbered product phase until public release evidence and project records are synchronized.
