@@ -80,27 +80,44 @@ def build_result() -> tuple[dict[str, object], SQLiteStorage, Path]:
 
 
 def main() -> None:
+    choices = (
+        "health_status",
+        "maintenance_ready",
+        "quick_check",
+        "database_size",
+        "disk_free",
+        "verification",
+        "sensitivity_internal",
+        "sensitivity_restricted",
+        "sensitivity_exact",
+        "paths",
+    )
     parser = argparse.ArgumentParser()
-    parser.add_argument("check", choices=("health", "verification", "sensitivity", "paths"))
+    parser.add_argument("check", choices=choices)
     args = parser.parse_args()
     result, storage, root = build_result()
+    totals = result["sensitivity"]["totals"]
     checks = {
-        "health": (
-            result["status"] == "healthy"
-            and result["health"]["maintenance_ready"] is False
-            and result["health"]["quick_check"] == ["ok"]
-            and result["storage"]["database_size_bytes"] > 0
-            and result["storage"]["disk_free_bytes"] > 0
-        ),
+        "health_status": result["status"] == "healthy",
+        "maintenance_ready": result["health"]["maintenance_ready"] is False,
+        "quick_check": result["health"]["quick_check"] == ["ok"],
+        "database_size": result["storage"]["database_size_bytes"] > 0,
+        "disk_free": result["storage"]["disk_free_bytes"] > 0,
         "verification": (
             result["verification"]["evidence_states"]["stale"] == 1
             and result["verification"]["evidence_risk_count"] == 1
         ),
-        "sensitivity": result["sensitivity"]["totals"]
-        == {"internal": 1, "restricted": 1},
+        "sensitivity_internal": totals.get("internal") == 1,
+        "sensitivity_restricted": totals.get("restricted") == 1,
+        "sensitivity_exact": totals == {"internal": 1, "restricted": 1},
         "paths": str(storage.path) not in str(result) and str(root) not in str(result),
     }
-    print(json.dumps({"check": args.check, "passed": checks[args.check], "result": result}, default=str))
+    print(
+        json.dumps(
+            {"check": args.check, "passed": checks[args.check], "result": result},
+            default=str,
+        )
+    )
     if not checks[args.check]:
         raise SystemExit(1)
 
