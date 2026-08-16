@@ -96,7 +96,7 @@ See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
 
 This was the compatibility boundary that made the v0.3.0 release line safe: the release candidate uses the MCP Python SDK v1 `FastMCP` API and is explicitly constrained to `mcp>=1.28,<2`.
 
-That boundary remains part of the immutable v0.3.0 release candidate and is not rewritten by later `main` development.
+That boundary remains part of the immutable v0.3.0 release and is not rewritten by later `main` development.
 
 ### MCP SDK v2 runtime migration — ✅ Complete
 
@@ -115,7 +115,7 @@ Post-v0.3 `main` now uses the MCP Python SDK v2 `MCPServer` API:
 - real installed-SDK regressions exercise public tool listing/calling and replacement;
 - no database, storage, Dashboard or destructive-confirmation contract changes.
 
-Quality #392 passed on the exact final PR head after README, ROADMAP, IMPLEMENTATION_STATUS and MEM-17 distribution-scope reconciliation. Issue #88 is closed. The immutable v0.3.0 release candidate remains on its separate validated v1 boundary.
+Quality #392 passed on the exact final PR head after README, ROADMAP, IMPLEMENTATION_STATUS and MEM-17 distribution-scope reconciliation. Issue #88 is closed. The immutable v0.3.0 release remains on its separate validated v1 boundary.
 
 See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
 
@@ -129,59 +129,76 @@ Delivered:
 - weekly Dependabot updates for Python and GitHub Actions;
 - grouped dependency updates to reduce PR noise.
 
-PR #74 is closed as superseded.
+PR #74 is closed as superseded. The PyPI artifact handoff was later hardened to `actions/download-artifact@v8` in PR #102 / Quality #396.
 
 ## v0.3.0 distribution and publication — 🟡 In progress / ⛔ external dependency
 
 **GitHub:** Issue #53  
 **Notion:** MEM-17 + MEM-33
 
-### Immutable release candidate — ✅ Complete
+### Immutable release source — ✅ Complete
 
 The original release preparation PR #54 produced merge `4dc160c1fdf0e2858337239c42c9085fe8097493`, but its MCP dependency could resolve MCP 2.x while the v0.3 runtime still used the v1 `FastMCP` API. It is therefore superseded as a tag target.
 
 Release-only PR #89 applied only the compatibility repair to the isolated release state, without pulling later post-v0.3 product features into v0.3.0. Quality #361 passed the complete Ubuntu/Windows/macOS × Python 3.11–3.13 matrix, dependency audit, release-artifact validation, clean installs and real installed v0.2.0 upgrades.
 
-The **only valid `v0.3.0` tag target** is:
+The **only valid `v0.3.0` release source** is:
 
 ```text
 9e0a084dd9b179612082edef99e1c3c9bf563ffa
 ```
 
-Do not tag current `main` and do not tag the superseded `4dc160c...` baseline. The MCP v2 migration in PR #100 is post-v0.3 work and must not alter this release target.
+The annotated tag `v0.3.0` now resolves exactly to that commit. Current `main` contains post-v0.3 MCP v2 work and is intentionally different.
 
-### Repository-side PyPI publication path — ✅ Complete
+### Public GitHub v0.3.0 Release — ✅ Complete
 
-PR #91 was rebuilt from current `main`, pinned to the immutable release commit above and passed exact-head Quality #368. It was merged as:
+PR #103 added a fail-closed GitHub Release publisher and passed Quality #401 with 16/16 jobs before merge `4fff71ec44a40d7d4d296d4ad0b30d39583ea8f3`.
 
-```text
-9f43944266b50706d6cb94809362b00d0c569017
-```
+Publisher run `31979169557` then:
 
-`main` now contains a guarded manual PyPI Trusted Publishing workflow that:
+- validated the immutable v0.3.0 source and MCP v1 boundary;
+- rebuilt and validated wheel/sdist from that immutable source;
+- verified SHA-256, clean install and installed v0.2.0 upgrade;
+- created and verified the annotated `v0.3.0` tag;
+- created a draft Release with exactly wheel, sdist and `SHA256SUMS`;
+- re-downloaded and revalidated those assets;
+- published the final non-draft/non-prerelease GitHub Release.
 
-- accepts only `release_tag=v0.3.0`;
-- requires a final GitHub Release;
+Release: https://github.com/dannymaaz/memory-mcp/releases/tag/v0.3.0
+
+Verified assets:
+
+- `persistent_memory_mcp-0.3.0-py3-none-any.whl`;
+- `persistent_memory_mcp-0.3.0.tar.gz`;
+- `SHA256SUMS`.
+
+The one-time connector branch trigger used to create the GitHub Release is retired after publication; the publisher remains manual/fail-closed against overwriting an existing release.
+
+### Repository-side PyPI publication path — ✅ Complete / connector-ready
+
+PR #91 established the Trusted Publishing/OIDC path, PR #102 hardened artifact retrieval to `actions/download-artifact@v8`, and the current release workflow remains pinned to the immutable v0.3.0 commit.
+
+The PyPI workflow:
+
+- accepts only the already-published `v0.3.0` Release;
 - requires that tag to resolve exactly to `9e0a084d...`;
-- downloads wheel/sdist/`SHA256SUMS` from that GitHub Release instead of rebuilding;
+- downloads wheel/sdist/`SHA256SUMS` from the GitHub Release instead of rebuilding;
 - verifies checksums, package metadata and `twine check`;
-- publishes only those verified distributions through OIDC from the protected `pypi` environment.
+- transfers only verified wheel/sdist to the OIDC publication job;
+- publishes from the `pypi` environment through PyPI Trusted Publishing;
+- supports manual dispatch and a tightly scoped connector trigger on `release/publish-pypi-v0.3.0` so no broader branch can initiate publication.
 
-PR #84 and #90 were intentionally closed as superseded when their bases became stale. PR #91 is the canonical merged publication-preparation PR.
+The connector trigger must **not** be used until the matching Trusted Publisher is configured in PyPI.
 
 ### Remaining publication sequence
 
-1. Create annotated tag `v0.3.0` from `9e0a084dd9b179612082edef99e1c3c9bf563ffa`.
-2. Require the tag-triggered Release artifacts workflow to finish successfully.
-3. Download and verify wheel, sdist and `SHA256SUMS`.
-4. Create the final GitHub Release using those exact artifacts.
-5. Configure the matching PyPI Trusted Publisher for repository `dannymaaz/memory-mcp`, workflow `publish-pypi.yml`, environment `pypi`.
-6. Run the guarded manual publication workflow.
-7. Smoke-test a clean public install of `persistent-memory-mcp==0.3.0`.
-8. Submit the stable package/release metadata to MCP Registry.
-9. Record the final evidence in GitHub and Notion.
+1. Configure the PyPI Trusted Publisher for owner `dannymaaz`, repository `memory-mcp`, workflow `publish-pypi.yml`, environment `pypi`.
+2. Run the guarded PyPI publication workflow using the exact GitHub Release distributions.
+3. Smoke-test a clean public install of `persistent-memory-mcp==0.3.0`.
+4. Submit the stable public package/release metadata to MCP Registry.
+5. Record final PyPI/Registry evidence in GitHub and Notion and close Issue #53 / MEM-33.
 
-Until steps 1–7 are complete, the README must not imply that public PyPI installation is already available.
+Until the public PyPI smoke test succeeds, the README must not imply that PyPI installation is already available.
 
 See [RELEASING.md](RELEASING.md) and [UPGRADING.md](UPGRADING.md).
 
@@ -189,7 +206,7 @@ See [RELEASING.md](RELEASING.md) and [UPGRADING.md](UPGRADING.md).
 
 MEM-17 already records the canonical scope decision: official core distribution stays **local-first and Python-first**. Docker, Render, Railway and equivalent platforms are optional future **self-managed** deployment documentation only; they are not v0.3.0 blockers and must not be presented as an official hosted SaaS.
 
-There is no remaining internal product-definition task under MEM-17. The unfinished MEM-17/MEM-33 work is the same external publication sequence tracked by Issue #53: tag, verified release assets, GitHub Release, PyPI Trusted Publisher/public smoke test and MCP Registry.
+There is no remaining internal product-definition task under MEM-17. The unfinished MEM-17/MEM-33 work is now only the external PyPI Trusted Publisher/public smoke-test step followed by MCP Registry evidence.
 
 ## Product scope — 🚫 No collaborative SaaS
 
@@ -206,7 +223,7 @@ Workspace invitations, shared team roles, billing/organization administration an
 
 ## Next recommended order
 
-1. Complete **Issue #53 / MEM-17 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
+1. Complete **Issue #53 / MEM-17 / MEM-33**: PyPI Trusted Publisher → guarded publication → clean public smoke test → MCP Registry → final evidence.
 2. Start no new numbered product phase until release evidence and external distribution state are synchronized.
 
 ## Definition of done
