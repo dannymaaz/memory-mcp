@@ -20,23 +20,27 @@ Required evidence includes:
 
 ## v0.3.0 immutable release source
 
-The validated v0.3.0 release preparation PR is #54. Its merge commit is:
+The original v0.3.0 preparation was merged in PR #54 as `4dc160c1fdf0e2858337239c42c9085fe8097493`. Before publication, Issue #81 found that its unconstrained `mcp>=0.1.0` dependency could resolve MCP 2.x even though the v0.3 runtime uses the MCP v1 `FastMCP` API.
+
+Release-only PR #89 was therefore created directly from that prepared release state and added only the required compatibility boundary (`mcp>=1.28,<2`), a regression proving the real installed FastMCP implementation is used, and corrected release documentation. Quality #361 passed the exact PR #89 HEAD across the full release matrix.
+
+The immutable v0.3.0 release commit is:
 
 ```text
-4dc160c1fdf0e2858337239c42c9085fe8097493
+9e0a084dd9b179612082edef99e1c3c9bf563ffa
 ```
 
-That commit reports package version `0.3.0` and contains the tag-triggered `.github/workflows/release.yml`. The final PR #54 head passed Quality #209 before merge.
+This commit is the merge result on `release/v0.3.0-final`. It reports package version `0.3.0`, contains the tag-triggered `.github/workflows/release.yml`, constrains the MCP SDK to the supported v1 line, and excludes later post-v0.3 product features.
 
-**Do not create `v0.3.0` from current `main`.** Current `main` contains later post-v0.3 work. The release tag must resolve to the validated release commit above.
+**Create `v0.3.0` only from `9e0a084dd9b179612082edef99e1c3c9bf563ffa`.** Do not tag current `main` and do not tag the superseded `4dc160c...` baseline.
 
 ## v0.3.0 release checklist
 
-1. Confirm the target commit is exactly `4dc160c1fdf0e2858337239c42c9085fe8097493`.
-2. Confirm that commit reports `version = "0.3.0"` in `pyproject.toml`.
+1. Confirm the tag target is exactly `9e0a084dd9b179612082edef99e1c3c9bf563ffa`.
+2. Confirm that commit reports `version = "0.3.0"` and `mcp>=1.28,<2` in `pyproject.toml`.
 3. Confirm `CHANGELOG.md` and `docs/UPGRADING.md` describe the exact release behavior.
-4. Confirm README, ROADMAP, IMPLEMENTATION_STATUS and Notion agree on delivered/partial/out-of-scope capabilities.
-5. Create annotated tag `v0.3.0` from the validated release commit.
+4. Confirm Issue #53 and Notion identify the same immutable release commit.
+5. Create annotated tag `v0.3.0` from `9e0a084dd9b179612082edef99e1c3c9bf563ffa`.
 6. Let `.github/workflows/release.yml` build wheel/sdist from that tag, run release validation and generate `SHA256SUMS`.
 7. Require the tag workflow to succeed before creating a GitHub Release.
 8. Download the retained workflow bundle and verify every artifact against `SHA256SUMS`.
@@ -45,8 +49,8 @@ That commit reports package version `0.3.0` and contains the tag-triggered `.git
    - the validated sdist;
    - `SHA256SUMS`.
 10. Configure the PyPI Trusted Publisher described below.
-11. Run `.github/workflows/publish-pypi.yml` manually with `release_tag=v0.3.0`.
-12. The workflow must download the GitHub Release assets, verify the release/tag/commit, verify SHA-256 and package metadata, and publish those exact distributions without rebuilding them.
+11. Run `.github/workflows/publish-pypi.yml` manually from `main` with `release_tag=v0.3.0`.
+12. The workflow must require the tag to resolve exactly to the immutable release commit, download the GitHub Release assets, verify SHA-256 and package metadata, and publish those exact distributions without rebuilding them.
 13. In a clean environment, install `persistent-memory-mcp==0.3.0` from public PyPI and repeat the basic `init`, `doctor`, `status`, `health` and migration-preview smoke tests.
 14. Submit/update MCP Registry metadata only after the public package and GitHub Release URLs are stable.
 15. Mark the Notion release record complete with GitHub Release, PyPI and Registry evidence.
@@ -67,17 +71,12 @@ The workflow does **not** publish to PyPI and does not create the final GitHub R
 
 ## GitHub Release notes
 
-Use the v0.3.0 section of `CHANGELOG.md` as the source of truth. The release title should be:
-
-```text
-Persistent Memory MCP v0.3.0 — Data Safety and Recovery
-```
-
-The release must explicitly call out:
+Use the v0.3.0 section of `CHANGELOG.md` as the source of truth. The release must explicitly call out:
 
 - SQLite-first local scope;
 - explicit migration requirement for existing 0.2.0 databases;
 - backup/health/restore/migration safety foundation;
+- supported MCP SDK v1 range (`mcp>=1.28,<2`) for v0.3.0;
 - cross-platform validation;
 - known partial areas;
 - out-of-scope collaborative/team features.
@@ -109,7 +108,7 @@ For v0.3.0, the workflow fails closed unless:
 
 - input tag is exactly `v0.3.0`;
 - a non-draft, non-prerelease GitHub Release for that tag exists;
-- checkout of that tag resolves exactly to `4dc160c1fdf0e2858337239c42c9085fe8097493`;
+- checkout of that tag resolves exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
 - release assets include the expected wheel, sdist and `SHA256SUMS`;
 - checksum verification passes;
 - artifact metadata identifies as v0.3.0;
