@@ -98,23 +98,24 @@ This was the compatibility boundary that made the v0.3.0 release line safe: the 
 
 That boundary remains part of the immutable v0.3.0 release candidate and is not rewritten by later `main` development.
 
-### MCP SDK v2 runtime migration — 🟡 In review
+### MCP SDK v2 runtime migration — ✅ Complete
 
 **GitHub:** Issue #88 / PR #100  
 **Notion:** MEM-42  
-**Functional gate:** Quality #387
+**Gate:** Quality #392  
+**Merge:** `322a8838d4fa5102392bdcc042185334bfa78d4f`
 
-Post-v0.3 `main` migrates deliberately to the MCP Python SDK v2 `MCPServer` API:
+Post-v0.3 `main` now uses the MCP Python SDK v2 `MCPServer` API:
 
 - `src.server` imports the installed `mcp.server.MCPServer` directly;
 - the local silent MCP fallback is removed;
-- dependency policy becomes `mcp>=2,<3`;
+- dependency policy is `mcp>=2,<3`;
 - Tool Registry replacement uses public `remove_tool()` + `add_tool()` rather than private SDK registries;
 - public tool names, arguments, payloads and stdio transport remain unchanged;
 - real installed-SDK regressions exercise public tool listing/calling and replacement;
 - no database, storage, Dashboard or destructive-confirmation contract changes.
 
-Quality #387 validates the functional migration across the supported matrix before documentation reconciliation. A fresh exact-head Quality is required before PR #100 can be marked complete and merged.
+Quality #392 passed on the exact final PR head after README, ROADMAP, IMPLEMENTATION_STATUS and MEM-17 distribution-scope reconciliation. Issue #88 is closed. The immutable v0.3.0 release candidate remains on its separate validated v1 boundary.
 
 See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
 
@@ -205,9 +206,8 @@ Workspace invitations, shared team roles, billing/organization administration an
 
 ## Next recommended order
 
-1. Finish **PR #100 / Issue #88 / MEM-42** with exact-head Quality after documentation reconciliation, then merge the MCP v2 mainline migration.
-2. Complete **Issue #53 / MEM-17 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
-3. Start no new numbered product phase until release evidence and external distribution state are synchronized.
+1. Complete **Issue #53 / MEM-17 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
+2. Start no new numbered product phase until release evidence and external distribution state are synchronized.
 
 ## Definition of done
 
