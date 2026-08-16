@@ -247,7 +247,7 @@ def test_operational_http_infers_single_owner_and_stays_bounded(tmp_path) -> Non
             html_payload = response.read().decode()
             assert response.headers.get_content_type() == "text/html"
             assert "script-src 'unsafe-inline'" in response.headers["Content-Security-Policy"]
-            assert "Knowledge Galaxy" in html_payload
+            assert "Operational Galaxy" in html_payload
     finally:
         server.shutdown()
         server.server_close()
