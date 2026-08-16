@@ -20,36 +20,39 @@ Required evidence includes:
 
 ## v0.3.0 immutable release source
 
-The validated v0.3.0 release preparation PR is #54. Its merge commit is:
+The original v0.3.0 release preparation PR #54 produced merge commit `4dc160c1fdf0e2858337239c42c9085fe8097493`. Before tagging, PR #89 applied the required MCP SDK compatibility fix **only to the isolated release branch**, without pulling later post-v0.3 features from `main`.
+
+The final validated tag target is therefore:
 
 ```text
-4dc160c1fdf0e2858337239c42c9085fe8097493
+9e0a084dd9b179612082edef99e1c3c9bf563ffa
 ```
 
-That commit reports package version `0.3.0` and contains the tag-triggered `.github/workflows/release.yml`. The final PR #54 head passed Quality #209 before merge.
+That commit is the merge of PR #89 into `release/v0.3.0-final`. It keeps the v0.3.0 feature set, constrains the server dependency to the supported `mcp>=1.28,<2` line, includes the compatibility regression, and passed Quality #361 before becoming the release target.
 
-**Do not create `v0.3.0` from current `main`.** Current `main` contains later post-v0.3 work. The release tag must resolve to the validated release commit above.
+**Do not create `v0.3.0` from current `main` or from the older `4dc160c…` candidate.** Current `main` contains later post-v0.3 work, while the older candidate lacks the final MCP SDK compatibility repair. The tag must resolve exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`.
 
 ## v0.3.0 release checklist
 
-1. Confirm the target commit is exactly `4dc160c1fdf0e2858337239c42c9085fe8097493`.
+1. Confirm the target commit is exactly `9e0a084dd9b179612082edef99e1c3c9bf563ffa`.
 2. Confirm that commit reports `version = "0.3.0"` in `pyproject.toml`.
-3. Confirm `CHANGELOG.md` and `docs/UPGRADING.md` describe the exact release behavior.
-4. Confirm README, ROADMAP, IMPLEMENTATION_STATUS and Notion agree on delivered/partial/out-of-scope capabilities.
-5. Create annotated tag `v0.3.0` from the validated release commit.
-6. Let `.github/workflows/release.yml` build wheel/sdist from that tag, run release validation and generate `SHA256SUMS`.
-7. Require the tag workflow to succeed before creating a GitHub Release.
-8. Download the retained workflow bundle and verify every artifact against `SHA256SUMS`.
-9. Create the GitHub Release with title `Persistent Memory MCP v0.3.0 — Data Safety and Recovery` and attach exactly:
-   - the validated wheel;
-   - the validated sdist;
-   - `SHA256SUMS`.
-10. Configure the PyPI Trusted Publisher described below.
-11. Run `.github/workflows/publish-pypi.yml` manually with `release_tag=v0.3.0`.
-12. The workflow must download the GitHub Release assets, verify the release/tag/commit, verify SHA-256 and package metadata, and publish those exact distributions without rebuilding them.
-13. In a clean environment, install `persistent-memory-mcp==0.3.0` from public PyPI and repeat the basic `init`, `doctor`, `status`, `health` and migration-preview smoke tests.
-14. Submit/update MCP Registry metadata only after the public package and GitHub Release URLs are stable.
-15. Mark the Notion release record complete with GitHub Release, PyPI and Registry evidence.
+3. Confirm the dependency at that commit is `mcp>=1.28,<2` and the installed-FastMCP compatibility regression is present.
+4. Confirm `CHANGELOG.md` and `docs/UPGRADING.md` describe the exact release behavior.
+5. Confirm README, ROADMAP, IMPLEMENTATION_STATUS and Notion agree on delivered/partial/out-of-scope capabilities.
+6. Create annotated tag `v0.3.0` from the validated release commit.
+7. Let `.github/workflows/release.yml` build wheel/sdist from that tag, run release validation and generate `SHA256SUMS`.
+8. Require the tag workflow to succeed before creating a GitHub Release.
+9. Download the retained workflow bundle and verify every artifact against `SHA256SUMS`.
+10. Create the GitHub Release with title `Persistent Memory MCP v0.3.0 — Data Safety and Recovery` and attach exactly:
+    - the validated wheel;
+    - the validated sdist;
+    - `SHA256SUMS`.
+11. Configure the PyPI Trusted Publisher described below.
+12. Run `.github/workflows/publish-pypi.yml` manually with `release_tag=v0.3.0`.
+13. The workflow must download the GitHub Release assets, verify the release/tag/commit, verify SHA-256 and package metadata, and publish those exact distributions without rebuilding them.
+14. In a clean environment, install `persistent-memory-mcp==0.3.0` from public PyPI and repeat the basic `init`, `doctor`, `status`, `health` and migration-preview smoke tests.
+15. Submit/update MCP Registry metadata only after the public package and GitHub Release URLs are stable.
+16. Mark the Notion release record complete with GitHub Release, PyPI and Registry evidence.
 
 ## Tag release workflow
 
@@ -78,6 +81,7 @@ The release must explicitly call out:
 - SQLite-first local scope;
 - explicit migration requirement for existing 0.2.0 databases;
 - backup/health/restore/migration safety foundation;
+- MCP SDK v1 compatibility boundary (`mcp>=1.28,<2`);
 - cross-platform validation;
 - known partial areas;
 - out-of-scope collaborative/team features.
@@ -109,7 +113,7 @@ For v0.3.0, the workflow fails closed unless:
 
 - input tag is exactly `v0.3.0`;
 - a non-draft, non-prerelease GitHub Release for that tag exists;
-- checkout of that tag resolves exactly to `4dc160c1fdf0e2858337239c42c9085fe8097493`;
+- checkout of that tag resolves exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
 - release assets include the expected wheel, sdist and `SHA256SUMS`;
 - checksum verification passes;
 - artifact metadata identifies as v0.3.0;
