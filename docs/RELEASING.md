@@ -18,81 +18,39 @@ The only valid `v0.3.0` tag target is:
 
 That commit is the validated merge of PR #89 into `release/v0.3.0-final`. It preserves the v0.3.0 feature set, constrains MCP to `mcp>=1.28,<2`, uses the real v1 `FastMCP` implementation, and passed Quality #361.
 
-**Do not create `v0.3.0` from current `main` and do not use the superseded `4dc160c…` candidate.** Current `main` contains post-v0.3 MCP v2 work.
+Current `main` contains post-v0.3 MCP v2 work and is intentionally not the v0.3.0 release source.
 
-## Preferred v0.3.0 GitHub Release path
+## GitHub Release v0.3.0 — complete
 
-Use `.github/workflows/publish-github-v0.3.0.yml` from `main` after its validating PR is merged.
-
-The workflow is deliberately manual. In GitHub Actions, select **Publish GitHub Release v0.3.0**, choose **Run workflow**, and enter the exact confirmation:
+PR #103 added `.github/workflows/publish-github-v0.3.0.yml`, passed Quality #401 with 16/16 jobs, and merged as:
 
 ```text
-RELEASE-v0.3.0
+4fff71ec44a40d7d4d296d4ad0b30d39583ea8f3
 ```
 
-The workflow then performs the complete GitHub-side publication gate in one run:
+Publisher run `31979169557` completed successfully. It validated the immutable source, built and checked the release artifacts, created the annotated tag, created a draft Release, re-downloaded and revalidated the draft assets, and only then made the Release final.
 
-1. checks out `9e0a084dd9b179612082edef99e1c3c9bf563ffa`, never current `main`;
-2. verifies package version `0.3.0`, the MCP v1 dependency boundary and the `FastMCP` release implementation;
-3. refuses to overwrite an existing GitHub Release;
-4. if `v0.3.0` already exists, requires it to be an **annotated tag** resolving exactly to the immutable release SHA;
-5. builds wheel and sdist from the immutable source;
-6. runs `twine check`, release-version validation, checksum generation/verification, clean-wheel validation and the installed v0.2.0 upgrade regression;
-7. extracts the canonical v0.3.0 release notes from `CHANGELOG.md`;
-8. retains the validated bundle as a GitHub Actions artifact;
-9. creates the annotated `v0.3.0` tag only after the build/validation gate has passed, when the tag is absent;
-10. creates a **draft** GitHub Release with exactly the validated wheel, sdist and `SHA256SUMS`;
-11. re-downloads those draft assets from GitHub and verifies their checksums, package version and metadata;
-12. compares the re-downloaded checksum manifest with the locally validated manifest;
-13. only after those checks pass, converts the draft into the final, non-prerelease GitHub Release;
-14. verifies the final release state and exact three-asset bundle.
+Verified state:
 
-The workflow has `contents: write` because it must create the annotated tag and GitHub Release. It uses only the repository-scoped `GITHUB_TOKEN`; no PAT is required.
+- annotated `v0.3.0` resolves exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+- GitHub Release is final and non-prerelease;
+- Release URL: https://github.com/dannymaaz/memory-mcp/releases/tag/v0.3.0;
+- exact assets:
+  - `persistent_memory_mcp-0.3.0-py3-none-any.whl`;
+  - `persistent_memory_mcp-0.3.0.tar.gz`;
+  - `SHA256SUMS`.
 
-### Why this is one workflow
-
-GitHub intentionally prevents most events created with a workflow's `GITHUB_TOKEN` from starting another workflow. Therefore a tag created inside the manual publisher cannot be relied on to trigger the separate tag-push workflow. The guarded publisher performs build, tag and GitHub Release creation itself rather than depending on a silent second trigger.
+The one-time branch trigger used by the connected GitHub app has been retired. The GitHub Release publisher is manual again and intentionally refuses to overwrite the already-published v0.3.0 Release.
 
 ## Existing tag-push validation workflow
 
-`.github/workflows/release.yml` remains available for a tag created outside Actions. On a `v*` tag push it:
+`.github/workflows/release.yml` remains a validation workflow for future externally-created `v*` tags. It verifies tag/package-version agreement, builds wheel/sdist, checks metadata and checksums, validates clean installation and the installed upgrade path, and retains the validated bundle as an Actions artifact.
 
-- verifies tag/package-version agreement;
-- builds wheel and sdist;
-- runs `twine check` and release-version validation;
-- generates and verifies `SHA256SUMS`;
-- validates a clean installed wheel;
-- revalidates the installed v0.2.0 upgrade path;
-- retains the validated bundle as a GitHub Actions artifact.
-
-It does **not** create a GitHub Release or publish to PyPI. For v0.3.0, prefer the guarded manual publisher above so the release source and asset handoff are enforced in one audited run.
-
-## Manual fallback
-
-If the guarded GitHub Release workflow cannot run because of repository Actions permissions, use this fallback only after confirming the immutable SHA:
-
-1. create annotated `v0.3.0` at `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
-2. let `.github/workflows/release.yml` finish successfully;
-3. download its retained bundle;
-4. verify `SHA256SUMS` locally;
-5. create the GitHub Release titled `Persistent Memory MCP v0.3.0 — Data Safety and Recovery` with exactly the validated wheel, sdist and `SHA256SUMS`;
-6. continue with PyPI Trusted Publishing below.
-
-Never recreate artifacts after the GitHub Release has been established.
-
-## GitHub Release notes
-
-The v0.3.0 section of `CHANGELOG.md` is the source of truth. The title is:
-
-```text
-Persistent Memory MCP v0.3.0 — Data Safety and Recovery
-```
-
-The notes must communicate SQLite-first local scope, explicit migration for existing 0.2.0 databases, backup/health/restore/migration safety, MCP SDK v1 compatibility (`mcp>=1.28,<2`), cross-platform validation, known partial areas and intentionally out-of-scope collaborative/team features.
+For v0.3.0, the canonical GitHub Release evidence is publisher run `31979169557` and the final Release linked above.
 
 ## Artifact checksums
 
-The release build generates `SHA256SUMS` for the wheel and sdist. Verification is a hard gate:
+`SHA256SUMS` is a hard publication gate. Verification uses:
 
 ```bash
 python scripts/generate_checksums.py dist --verify
@@ -100,9 +58,11 @@ python scripts/generate_checksums.py dist --verify
 
 A checksum mismatch, missing distribution or unexpected checksum entry is a hard stop.
 
-## PyPI Trusted Publishing
+Do not rebuild v0.3.0 distributions after the final GitHub Release. PyPI must receive the exact wheel/sdist already attached to that Release.
 
-The PyPI publication workflow is `.github/workflows/publish-pypi.yml`. It is manual and uses the protected GitHub environment `pypi`.
+## PyPI Trusted Publishing — next external gate
+
+The PyPI publication workflow is `.github/workflows/publish-pypi.yml` and uses the GitHub environment name `pypi`.
 
 Configure the Trusted Publisher on PyPI with exactly:
 
@@ -115,15 +75,24 @@ The workflow grants `id-token: write` only to the publication job and uses PyPI 
 
 For v0.3.0 it fails closed unless:
 
-- input tag is exactly `v0.3.0`;
+- the trigger is explicitly authorized for v0.3.0;
 - a final non-draft, non-prerelease GitHub Release exists;
-- that tag resolves exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+- `v0.3.0` resolves exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
 - the release contains the expected wheel, sdist and `SHA256SUMS`;
 - checksum verification passes;
 - artifact metadata identifies v0.3.0;
 - `twine check` passes.
 
 Only the verified wheel/sdist are transferred to the isolated OIDC publication job. The package is **not rebuilt** between GitHub Release and PyPI.
+
+### Starting the PyPI workflow
+
+Two tightly scoped trigger paths are supported:
+
+1. **GitHub UI:** run **Publish v0.3.0 to PyPI** manually with `release_tag=v0.3.0`.
+2. **Connected GitHub app:** after Trusted Publisher is configured, create the exact branch `release/publish-pypi-v0.3.0` from the validated current `main`. A push to any other branch cannot trigger PyPI publication.
+
+Do **not** create the connector trigger branch before the PyPI Trusted Publisher is configured. Branch creation itself can generate the push event, so no extra trigger commit is required.
 
 ## Public PyPI validation
 
@@ -164,13 +133,13 @@ Do not present team workspaces, shared roles or a public collaborative dashboard
 
 The v0.3.0 release record is complete only after all of the following are true:
 
-- [ ] final GitHub Release exists for annotated `v0.3.0` → `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
-- [ ] wheel, sdist and `SHA256SUMS` are verified release assets;
+- [x] final GitHub Release exists for annotated `v0.3.0` → `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+- [x] wheel, sdist and `SHA256SUMS` are verified release assets;
 - [ ] PyPI Trusted Publisher is configured;
-- [ ] `.github/workflows/publish-pypi.yml` succeeds for `release_tag=v0.3.0`;
+- [ ] `.github/workflows/publish-pypi.yml` succeeds for v0.3.0;
 - [ ] clean public PyPI install/smoke test succeeds;
 - [ ] MCP Registry metadata is submitted/updated;
-- [ ] GitHub Issue #53 and the Notion release record contain final public evidence.
+- [ ] GitHub Issue #53 and the Notion release record contain final PyPI/Registry evidence.
 
 ## Rollback
 

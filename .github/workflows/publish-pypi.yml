@@ -8,25 +8,40 @@ on:
         required: true
         default: "v0.3.0"
         type: string
+  push:
+    branches:
+      - "release/publish-pypi-v0.3.0"
 
 permissions:
   contents: read
+
+concurrency:
+  group: publish-pypi-v0.3.0
+  cancel-in-progress: false
 
 jobs:
   verify-release:
     name: Verify exact GitHub Release bundle
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_TAG: v0.3.0
       EXPECTED_TAG: v0.3.0
       EXPECTED_COMMIT: 9e0a084dd9b179612082edef99e1c3c9bf563ffa
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Require the approved v0.3.0 tag
+      - name: Require an authorized v0.3.0 publication trigger
         shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          test "$RELEASE_TAG" = "$EXPECTED_TAG"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$REQUESTED_TAG" = "$EXPECTED_TAG"
+          else
+            test "$GITHUB_EVENT_NAME" = "push"
+            test "$GITHUB_REF" = "refs/heads/release/publish-pypi-v0.3.0"
+          fi
+
           gh release view "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --json tagName,isDraft,isPrerelease \
@@ -36,7 +51,7 @@ jobs:
       - name: Checkout the exact release tag
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: v0.3.0
           fetch-depth: 0
 
       - name: Require the validated release commit
