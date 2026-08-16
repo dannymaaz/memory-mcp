@@ -6,7 +6,7 @@ This document mirrors the canonical post-v0.3 roadmap maintained in Notion. Prod
 
 ## Status legend
 
-- ✅ **Complete** — merged, integrated and covered by repository tests.
+- ✅ **Complete** — implemented, integrated and required repository regression evidence is part of the delivery gate.
 - 🟡 **In review / partial** — implementation exists but the end-to-end gate is not fully closed.
 - ⬜ **Planned** — sequenced work not started yet.
 - 🚫 **Out of scope** — intentionally excluded from the product direction.
@@ -32,7 +32,7 @@ This document mirrors the canonical post-v0.3 roadmap maintained in Notion. Prod
 - validated immutable RuntimeSettings foundation;
 - Ubuntu, Windows and macOS CI across Python 3.11–3.13;
 - wheel/sdist build and clean-install validation;
-- real installed v0.2.0 → v0.3.0 migration regression with existing data preserved;
+- real installed v0.2.0 → current schema migration regression with existing data preserved;
 - release-artifact checksums and backup-first rollback documentation.
 
 ### Memory, search and development intelligence — ✅/🟡 Foundation
@@ -44,13 +44,14 @@ Complete foundations:
 - persisted embedding lifecycle and local fallback;
 - Git repository/branch/commit verification;
 - code symbol extraction and bounded impact graphs;
+- progressive repository map → file → symbol → fragment retrieval;
+- persistent symbol snapshots/evolution with typed evidence;
 - duplicate/contradiction intelligence;
 - deployment history, risk gates and evaluation regressions;
 - localhost dashboard and bounded Galaxy knowledge view.
 
-Known partial areas that the new roadmap addresses:
+Known partial areas that the remaining roadmap addresses:
 
-- persistent symbol history across revisions is not yet complete;
 - automatic continuation checkpoints remain partial;
 - context-quality golden scenarios still need explicit cost/relevance guardrails;
 - Galaxy still needs an operational projection rather than being only a knowledge visualization.
@@ -79,7 +80,7 @@ Validated by Quality #226 across Ubuntu/Windows/macOS and Python 3.11–3.13. Re
 - source-code fixture: 138 reference vs 140 fallback — **1.45% error**;
 - guardrail: worst fixture error ≤40%; validated worst case **15.94%**.
 
-### 2. Progressive repository retrieval — 🟡 In review
+### 2. Progressive repository retrieval — ✅ Complete
 
 **Notion:** MEM-37  
 **GitHub:** Issue #61 / PR #62
@@ -120,26 +121,61 @@ Reproducible PR #62 evaluation (`scripts/evaluate_repository_retrieval.py`):
 
 Additional regressions verify symbol-only discovery, stale cursors after committed and uncommitted candidate changes, secret redaction, Python/TS/JS/SQL symbols, path traversal, ignored paths and byte/token limits.
 
-Exit criteria:
+### 3. Code provenance and symbol evolution — ✅ Delivery implemented
 
-- [x] progressive runtime tool and bounded retrieval service implemented;
-- [x] reproducible retrieval-size/token evidence generated in CI;
-- [x] symbol-only and dirty-working-tree cursor regressions added;
+**Notion:** MEM-38  
+**GitHub:** Issue #63 / PR #64
+
+PR #64 persists code evolution instead of treating parser output as timeless current truth.
+
+Delivered contract:
+
+- SQLite schema v2 with snapshot runs, per-symbol snapshots, classified changes and typed evidence links;
+- migration `0002` through the existing preview → verified backup → transactional apply lifecycle;
+- fresh databases bootstrap migration history `[1, 2]`; historical v0.2 installs upgrade through both versions while preserving existing data;
+- capture is scoped by owner + project + repository and accepts only a clean Git HEAD;
+- one idempotent run per owner/project/repository/commit;
+- bounded/redacted signatures and SHA-256 hashes are persisted without source bodies;
+- nearest persisted Git ancestor is used as the comparison baseline;
+- changes are classified as `added`, `modified`, `moved`, `renamed`, `deleted` or `unchanged`;
+- stable `logical_id` survives exact moves and conservative unique rename matches;
+- rename matching prefers exact identity/body evidence and only falls back to a normalized bounded signature when the candidate is unique on both sides;
+- deterministic `rowid` tie-breaking prevents same-second SQLite timestamps from selecting stale snapshots;
+- file/commit/test evidence is added automatically where available;
+- decision/task evidence requires explicit owner/project validation;
+- evidence can be marked `stale`, `contradicted`, `missing_source` or `unverified` without deleting history;
+- symbol history uses the shared Context Packet token-counter/budget contract;
+- the runtime exposes `capture_symbol_snapshot`, `get_symbol_history`, `compare_symbol_commits`, `link_symbol_memory` and `invalidate_symbol_evidence` for local SQLite installations.
+
+Reproducible regression (`scripts/evaluate_symbol_evolution.py`) creates a multi-language two-commit repository and requires:
+
+| Check | Gate |
+|---|---:|
+| Languages | Python + TypeScript + JavaScript + SQL |
+| Rename preserves logical ID | **true** |
+| Renamed | **≥ 1** |
+| Moved | **≥ 1** |
+| Modified | **≥ 1** |
+| Current renamed symbol state | **verified** |
+
+The first validated CI execution produced **1 renamed, 1 moved and 2 modified** symbols and preserved the renamed Python symbol identity. The evaluation is wired into the Ubuntu/Windows/macOS reference jobs; exact final PR HEAD must pass those jobs plus the Python 3.11–3.13 matrix and release-artifact upgrade validation before merge.
+
+Exit criteria for PR #64:
+
+- [x] versioned SQLite schema/migration and packaged assets implemented;
+- [x] clean-HEAD idempotent snapshot capture implemented;
+- [x] added/modified/moved/renamed/deleted classification implemented;
+- [x] deterministic history ordering and conservative rename identity implemented;
+- [x] typed file/commit/test/decision/task evidence with explicit invalidation implemented;
+- [x] hard-budget history output implemented;
+- [x] reproducible Python/TS/JS/SQL symbol-evolution evaluation added to cross-platform CI;
 - [x] README, ROADMAP, IMPLEMENTATION_STATUS and Notion synchronized in the branch;
 - [ ] exact final PR head passes the complete Quality matrix and release-artifact validation;
-- [ ] PR #62 merged and MEM-37 marked complete.
-
-### 3. Code provenance and symbol evolution — ⬜ Planned
-
-Starts only after Step 2 is merged.
-
-- persist symbol identity across commits/revisions;
-- classify added, modified, moved, renamed and deleted symbols;
-- bind symbol evidence to repository path + commit/ref;
-- link symbols to tests, tasks, decisions and deployments where evidence exists;
-- avoid stale-code claims when the repository has changed.
+- [ ] PR #64 merged and MEM-38 marked complete.
 
 ### 4. Context quality and regression guardrails — ⬜ Planned
+
+Starts after Step 3 is merged.
 
 - define golden continuation scenarios;
 - measure relevance, provenance coverage and unnecessary-context rate;
@@ -195,7 +231,6 @@ A step is not complete until all of the following are true:
 
 ## Current recommended order
 
-1. Finish and merge **PR #62 — progressive repository/symbol/fragment retrieval**.
-2. Add **persistent code provenance/symbol evolution** only after the bounded retrieval contract is stable.
-3. Add **context quality regression guardrails** with measurable golden scenarios.
-4. Evolve **Galaxy into an operational project map** using the verified data from the previous layers.
+1. Finish the exact-head gate and merge **PR #64 — persistent code provenance/symbol evolution**.
+2. Start **context quality regression guardrails** with measurable golden scenarios.
+3. Evolve **Galaxy into an operational project map** using the verified data from the previous layers.

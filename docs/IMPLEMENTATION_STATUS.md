@@ -1,14 +1,14 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for the post-v0.3 Context Compiler phase and PR #62. Persistent Memory MCP remains a local-first, personal and localhost-only product.
+Last reconciled for the post-v0.3 Context Compiler phase and PR #64. Persistent Memory MCP remains a local-first, personal and localhost-only product.
 
 ## Executive summary
 
 The local data-safety foundation is mature: private SQLite storage, owner/project isolation, WAL-safe backup, SHA-256 manifests, read-only health diagnostics, confirmed restore with rollback, versioned backup-first migrations, explicit upgrade tooling, deterministic SQLite connection lifecycle, validated Settings and cross-platform release-artifact testing.
 
-The first post-v0.3 Context Compiler milestone is complete. PR #60 established Context Packet v1, model-aware/local token accounting and a hard serialized output budget without breaking existing `build_context()` callers.
+The first two post-v0.3 Context Compiler milestones are complete: PR #60 established Context Packet v1 with hard serialized token budgets, and PR #62 added progressive map → file → symbol → fragment repository retrieval with bounded cryptographic/Git provenance.
 
-PR #62 implements the second mandatory milestone: **progressive repository retrieval**. Instead of opening the repository broadly, the MCP path maps supported files first, ranks a bounded candidate set, parses symbols only from those candidate files, expands bounded graph neighbors and finally reads exact line fragments with cryptographic/Git provenance. The same token-accounting contract used by Context Packet measures the final retrieval payload.
+PR #64 implements the third mandatory milestone: **persistent code provenance and symbol evolution**. Local SQLite can now retain commit-scoped symbol snapshots, stable logical identity across moves and conservative renames, classified changes and typed evidence instead of assuming that a parser result remains current forever. History output explicitly distinguishes verified source from stale, contradicted, missing or unverified evidence and shares the Context Packet token-budget contract.
 
 ## Current capability matrix
 
@@ -19,17 +19,18 @@ PR #62 implements the second mandatory milestone: **progressive repository retri
 | Verified backup + manifests | Complete foundation | Backup API, integrity check, SHA-256 sidecars | Optional rotation/signing refinements |
 | Health + maintenance readiness | Complete foundation | Read-only checks and verified-backup awareness | Dashboard presentation |
 | Confirmed restore | Complete foundation | Two-phase plan/execute, safety backup, rollback | Dashboard integration only |
-| Installed upgrade lifecycle | Complete | v0.2.0 → v0.3.0 package regression | Future release migrations |
+| Installed upgrade lifecycle | Complete | v0.2.0 → current schema package regression | Future release migrations |
 | Runtime Settings | Complete foundation | validated SQLite-first configuration | Specialized provider settings remain incremental |
 | Context ranking/filtering | Complete foundation | intent-aware selection, expiry/trust filtering, compression | Quality guardrails remain planned |
 | Context Packet v1 | **Complete foundation** | PR #60 / Quality #226 | Extend as later evidence types require |
 | Model-aware token accounting | **Complete foundation** | deterministic fallback + optional tiktoken reference | Broader benchmark corpus later |
-| Progressive repository retrieval | **In review** | Issue #61 / PR #62 | Exact final-head CI + merge |
-| Git verification | Complete foundation | repository/branch/commit/file verification | Persistent revision-aware symbol history |
-| Code intelligence | Partial | Python/TS/JS/SQL symbol extraction + bounded graph | Persistent symbol evolution across revisions |
+| Progressive repository retrieval | **Complete** | PR #62 / MEM-37 | Ongoing ranking/benchmark refinement |
+| Persistent symbol evolution | **Delivery implemented** | Issue #63 / PR #64 / MEM-38 | Exact final-head cross-platform gate + merge |
+| Git verification | Complete foundation | repository/branch/commit/file verification | Broader provenance consumers later |
+| Code intelligence | **Complete foundation** | Python/TS/JS/SQL extraction + bounded graph + persistent revision history | Richer language parsers/relationships later |
 | Automatic continuation | Partial | sessions/checkpoints/handoff | project resolution + automatic milestone capture |
 | Hybrid search/embeddings | Complete foundation | semantic + lexical fallback | broader quality/cost benchmarks |
-| Evaluation/provenance suite | Complete foundation | existing agent regressions | context-quality golden scenarios planned |
+| Evaluation/provenance suite | Complete foundation | agent, token, retrieval and symbol-evolution regressions | context-quality golden scenarios are Step 4 |
 | Dashboard/Galaxy | Partial foundation | localhost operational views + bounded graph | operational project map is roadmap Step 5 |
 | Teams / remote collaboration | Out of scope | explicit product decision | no implementation planned |
 
@@ -63,64 +64,21 @@ Validated fallback measurements against `gpt-4o` / `tiktoken:o200k_base`:
 
 Quality #226 passed the complete Ubuntu/Windows/macOS × Python 3.11–3.13 matrix, reference-tokenizer jobs, release artifacts and dependency audit.
 
-## Progressive repository retrieval — PR #62
+## Progressive repository retrieval — complete
 
-### Real runtime integration
+PR #62 exposes `retrieve_repository_context` through the real MCP runtime.
 
-`persistent_memory_mcp.runtime` installs `retrieve_repository_context` after Git verification and existing code intelligence. It therefore runs through the normal MCP server rather than being an offline helper.
+The retrieval service:
 
-### Progressive stages
+1. maps supported repository paths with `git ls-files` without loading every file;
+2. ranks a bounded candidate set using path evidence and local bounded `git grep` signals;
+3. parses only candidate files with the existing Python/TypeScript/JavaScript/SQL parsers;
+4. expands bounded graph neighbors;
+5. reads only selected line fragments.
 
-1. **Repository map:** `git ls-files --cached --others --exclude-standard` identifies supported, non-ignored paths without loading all file contents into Python.
-2. **Candidate files:** deterministic ranking combines path/name/language evidence with bounded local `git grep` content signals.
-3. **Symbols:** only candidate files are parsed, reusing existing Python and regex-based TypeScript/JavaScript/SQL code-intelligence parsers.
-4. **Graph neighbors:** known code edges expand only to configured depth/count limits.
-5. **Fragments:** only selected symbols cause source-file reads; emitted evidence is a bounded line range instead of a whole-file dump.
+Every fragment carries repository-relative path, line range, content SHA-256, file SHA-256 and Git commit/ref provenance. Traversal/root escape is rejected, configured ignore patterns apply, recognized secrets are redacted, code is never executed, and file/symbol/neighbor/byte/page/token limits are explicit.
 
-### Provenance
-
-Every emitted fragment contains:
-
-- repository-relative path;
-- symbol identifier/name/kind;
-- start and end line;
-- emitted-content SHA-256;
-- whole-file SHA-256;
-- repository Git commit;
-- branch/ref;
-- dirty-working-tree state.
-
-### Safety and isolation
-
-- absolute and traversal paths are rejected;
-- resolved paths must remain below the verified repository root;
-- missing/deleted candidates are skipped safely;
-- `RuntimeSettings.ignore_patterns` and existing code-intelligence exclusions are enforced;
-- recognized secrets are redacted from emitted fragments;
-- repository code is read but never executed;
-- files larger than the configured per-file cap are not parsed/read as fragments;
-- total fragment bytes, files, symbols, neighbors, lines, pages and tokens are explicitly bounded.
-
-### Deterministic pagination
-
-The cursor contains only a bounded version/offset/fingerprint payload. Its fingerprint is derived from:
-
-- Git commit;
-- normalized query;
-- ranked candidate paths;
-- SHA-256 of ranked candidate files.
-
-This means a cursor is rejected after a new relevant commit **or a relevant uncommitted candidate-file change**. It cannot silently continue against changed evidence.
-
-### Token-budget integration
-
-Progressive retrieval calls the same `resolve_token_counter()` / `measure_tokens()` contract used by Context Packet. The final serialized retrieval result is measured, and lower-priority payload sections are trimmed if necessary. If mandatory retrieval-control metadata alone cannot fit, the operation fails closed.
-
-### Reproducible evaluation
-
-`scripts/evaluate_repository_retrieval.py` creates an 80-file deterministic repository and asks for one exact symbol.
-
-Current PR #62 evidence:
+Reproducible evaluation:
 
 | Metric | Result |
 |---|---:|
@@ -128,29 +86,93 @@ Current PR #62 evidence:
 | Candidate files parsed | **6** |
 | Parse fraction | **7.5%** |
 | Selected fragments | **2** |
-| Fragment bytes emitted | **284 B** |
-| Target file lines | **125** |
-| Target fragment lines | **7** |
+| Fragment bytes | **284 B** |
 | Target fragment/file ratio | **5.6%** |
 | Final retrieval tokens | **1,305 / 1,400** |
 
-The intended `services/security.py` file is both the top file candidate and source of the target fragment. The evaluation is wired into the Ubuntu/Windows/macOS reference jobs.
+## Persistent symbol provenance and evolution — PR #64 / MEM-38
 
-### Regression coverage
+### SQLite model and migration
 
-PR #62 covers:
+PR #64 advances local SQLite to schema v2 with four bounded tables:
 
-- Python exact-symbol fragments and secret redaction;
-- TypeScript function retrieval;
-- JavaScript function retrieval;
-- SQL table retrieval;
-- bounded scanning in a repository with many unrelated files;
-- exact symbol discovery even when the filename does not contain the symbol name;
-- committed-state cursor invalidation;
-- dirty-working-tree cursor invalidation without a commit;
-- traversal/root-escape rejection;
-- invalid limit rejection;
-- total byte and final token budgets.
+- `code_symbol_snapshot_runs` — one capture per owner/project/repository/commit;
+- `code_symbol_snapshots` — bounded symbol identity/provenance without source bodies;
+- `code_symbol_changes` — classified predecessor/current relationships;
+- `code_symbol_links` — typed evidence to files, commits, tests and validated project memory.
+
+Migration `0002` uses the existing migration contract: read-only preview, checksum verification, verified pre-migration backup and transactional apply. Fresh databases bootstrap migration history `[1, 2]`. The historical installed v0.2.0 upgrade regression now requires both migrations and proves existing task data survives while the symbol-evolution tables are created.
+
+### Capture and identity
+
+`SymbolEvolutionService.capture()`:
+
+- is scoped by `OWNER_ID + project_id + repository`;
+- requires a clean Git HEAD and revalidates it before persistence;
+- is idempotent for an already captured commit;
+- finds the nearest persisted Git ancestor rather than assuming insertion order;
+- persists bounded/redacted signatures and signature/body/file hashes, never source bodies;
+- records `added`, `modified`, `moved`, `renamed`, `deleted` and `unchanged` changes.
+
+Logical identity is fail-safe:
+
+- exact qualified identity is preferred;
+- exact unique body matches preserve identity across moves;
+- stronger name/signature matches are used next;
+- a name-only rename may use a normalized bounded signature only when that signature is unique on both old and new sides;
+- ambiguous candidates are not merged speculatively.
+
+### Deterministic history and trust state
+
+SQLite `datetime('now')` timestamps can collide within one second. PR #64 therefore uses deterministic `rowid DESC` tie-breaking wherever latest runs/snapshots/changes are selected. This prevents a just-captured current HEAD from being misclassified as stale because an older same-second snapshot happened to sort first.
+
+`get_symbol_history` returns bounded snapshots, classified changes and evidence plus one current state:
+
+- `verified` — current HEAD/file still matches the persisted evidence;
+- `stale` — repository state changed relative to the latest evidence;
+- `contradicted` — evidence was explicitly invalidated as conflicting;
+- `missing_source` — the source/symbol was deleted or unavailable;
+- `unverified` — evidence exists without a current verification claim.
+
+Evidence invalidation updates state and reason metadata without deleting history.
+
+### Evidence relationships
+
+Automatic evidence includes:
+
+- `defined_in → file` with file hash;
+- `observed_at → commit`;
+- `tested_by → test` when the existing code graph proves a test symbol calls the target.
+
+Explicit `decision` and `task` links are permitted only after validating the target belongs to the same owner/project scope. The schema also reserves the typed `deployment` target for future evidence producers rather than inventing unverified deployment links.
+
+### Runtime tools
+
+Local SQLite runtime installs:
+
+- `capture_symbol_snapshot`;
+- `get_symbol_history`;
+- `compare_symbol_commits`;
+- `link_symbol_memory`;
+- `invalidate_symbol_evidence`.
+
+### Reproducible evaluation
+
+`scripts/evaluate_symbol_evolution.py` creates a deterministic two-commit repository containing Python, TypeScript, JavaScript and SQL. It captures both commits and fails unless all required checks pass.
+
+First validated Linux output:
+
+| Metric | Result |
+|---|---:|
+| Languages | **javascript, python, sql, typescript** |
+| Initial symbols | **4** |
+| Renamed | **1** |
+| Moved | **1** |
+| Modified | **2** |
+| Rename preserves `logical_id` | **true** |
+| Renamed symbol current state | **verified** |
+
+The evaluation is part of the reference CI jobs on Ubuntu, Windows and macOS. The normal suite separately covers a three-commit history with movement, modification, rename, deletion, test evidence, decision/task links, explicit contradiction, idempotent recapture and dirty-working-tree stale detection.
 
 ## Existing local data-safety contracts
 
@@ -211,27 +233,26 @@ Not planned:
 ## Post-v0.3 completion sequence
 
 1. ✅ **Context Packet + token accounting** — PR #60 / MEM-36 complete.
-2. 🟡 **Progressive repository retrieval** — PR #62 / MEM-37 in review.
-3. ⬜ **Persistent code provenance/symbol evolution** — next after PR #62.
-4. ⬜ **Context-quality regression guardrails**.
+2. ✅ **Progressive repository retrieval** — PR #62 / MEM-37 complete.
+3. ✅ **Persistent code provenance/symbol evolution** — PR #64 / MEM-38 implementation complete; exact-head merge gate pending.
+4. ⬜ **Context-quality regression guardrails** — next after PR #64 merges.
 5. ⬜ **Operational project map / Galaxy** after the evidence layers above exist.
 
-## Definition of done for PR #62 / MEM-37
+## Definition of done for PR #64 / MEM-38
 
-- [x] Real MCP runtime tool implemented.
-- [x] Map → file → symbol → fragment retrieval is progressive and bounded.
-- [x] Existing Python/TypeScript/JavaScript/SQL parsers are reused rather than duplicated.
-- [x] Path traversal/root escape/ignore-policy controls implemented.
-- [x] Fragment path/lines/content hash/file hash/commit/ref provenance implemented.
-- [x] Secret redaction applied to emitted fragments.
-- [x] Deterministic ordering and bounded cursor pagination implemented.
-- [x] Cursor detects committed and relevant uncommitted candidate changes.
-- [x] Context Packet token-counter contract measures the final retrieval payload.
-- [x] Reproducible 80-file retrieval evaluation added to CI.
-- [x] Python/TS/JS/SQL, symbol-only, traversal, cursor and byte/token boundary regressions added.
+- [x] Schema v2 and migration `0002` implemented with packaged assets.
+- [x] Fresh schema and installed historical upgrade validate migrations `[1, 2]`.
+- [x] Clean-HEAD, project/owner-scoped, idempotent snapshot capture implemented.
+- [x] Added/modified/moved/renamed/deleted/unchanged classification implemented.
+- [x] Deterministic same-second history ordering implemented.
+- [x] Conservative unique rename matching preserves logical identity without speculative merges.
+- [x] File/commit/test evidence plus validated decision/task links implemented.
+- [x] Explicit evidence invalidation preserves history.
+- [x] Symbol history uses shared Context Packet token accounting and a hard budget.
+- [x] Reproducible Python/TypeScript/JavaScript/SQL evaluation added to cross-platform CI.
 - [x] README, ROADMAP, IMPLEMENTATION_STATUS and Notion synchronized in the branch.
-- [ ] Exact final PR head passes the complete Ubuntu/Windows/macOS Quality matrix and artifact validation.
-- [ ] PR #62 merged.
-- [ ] MEM-37 marked complete in Notion.
+- [ ] Exact final PR head passes the complete Ubuntu/Windows/macOS Quality matrix and release-artifact validation.
+- [ ] PR #64 merged.
+- [ ] MEM-38 marked complete in Notion.
 
-Step 3 must not begin until this final gate is closed: persistent symbol evolution should build on the stable fragment/provenance contract rather than introduce another repository evidence path.
+Step 4 begins only after those final gates close. Its focus is no longer storage or symbol identity: it will measure whether compiled context is actually relevant, provenance-complete, economical and resistant to stale/poisoned evidence.

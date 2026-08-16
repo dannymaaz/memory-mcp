@@ -106,12 +106,26 @@ def _verify_upgraded_data(database: Path) -> None:
         task = connection.execute(
             "select title, details from tasks where title='survive-upgrade'"
         ).fetchone()
+        symbol_tables = {
+            row[0]
+            for row in connection.execute(
+                "select name from sqlite_master where type='table' and name in "
+                "('code_symbol_snapshot_runs','code_symbol_snapshots','code_symbol_changes','code_symbol_links')"
+            ).fetchall()
+        }
     finally:
         connection.close()
-    if version != 1 or history != [(1,)]:
+    if version != 2 or history != [(1,), (2,)]:
         raise RuntimeError(
             f"Candidate migration did not establish current schema: version={version}, history={history}"
         )
+    if symbol_tables != {
+        "code_symbol_snapshot_runs",
+        "code_symbol_snapshots",
+        "code_symbol_changes",
+        "code_symbol_links",
+    }:
+        raise RuntimeError(f"Symbol-evolution tables were not created by upgrade: {symbol_tables}")
     if task != ("survive-upgrade", "created by installed 0.2.0"):
         raise RuntimeError(f"Legacy task data was not preserved: {task}")
 
@@ -134,9 +148,6 @@ def validate(dist_dir: Path, repo_root: Path) -> None:
         clean_env.pop("PYTHONPATH", None)
         for key in ENV_KEYS:
             clean_env.pop(key, None)
-        # v0.2.0 predates the portable ASCII status-marker fix. Force UTF-8 only
-        # in this historical fixture so redirected output can be captured on Windows.
-        # Candidate artifact validation remains separate and does not rely on this.
         clean_env["PYTHONIOENCODING"] = "utf-8"
 
         _export_legacy_source(repo_root, legacy_source, clean_env)
@@ -200,9 +211,6 @@ def validate(dist_dir: Path, repo_root: Path) -> None:
         )
         _insert_legacy_data(python, database, work_dir, clean_env)
 
-        # The candidate still carries pre-release package metadata until the final
-        # version bump, so force reinstall is intentional here. The database and
-        # generated configuration remain those created by the installed v0.2.0 wheel.
         _run(
             [
                 str(python),
@@ -228,8 +236,10 @@ def validate(dist_dir: Path, repo_root: Path) -> None:
         )
         preview_payload = json.loads(preview.stdout)
         pending = (preview_payload.get("plan") or {}).get("pending") or []
-        if [item.get("version") for item in pending] != [1]:
-            raise RuntimeError(f"Expected v0.2.0 database to require migration 1: {preview_payload}")
+        if [item.get("version") for item in pending] != [1, 2]:
+            raise RuntimeError(
+                f"Expected v0.2.0 database to require migrations 1 and 2: {preview_payload}"
+            )
 
         guard_code = (
             "from persistent_memory_mcp.runtime import _assert_migration_ready; "

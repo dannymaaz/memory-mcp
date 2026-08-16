@@ -43,7 +43,7 @@ def test_plan_is_read_only(tmp_path: Path) -> None:
     plan = MigrationService(database).plan()
 
     assert plan.schema_version == 0
-    assert plan.pending[0]["version"] == 1
+    assert [item["version"] for item in plan.pending] == [1, 2]
     assert plan.as_dict()["backup_required"] is True
     with sqlite3.connect(database) as connection:
         tracking_table = connection.execute(
@@ -61,12 +61,26 @@ def test_apply_preserves_data_and_creates_verified_backup(tmp_path: Path) -> Non
 
     verify_backup_manifest(Path(str(result["backup"]["backup_path"])))
     with sqlite3.connect(database) as connection:
-        assert connection.execute("pragma user_version").fetchone()[0] == 1
+        assert connection.execute("pragma user_version").fetchone()[0] == 2
         assert connection.execute("select title, details from tasks").fetchone() == (
             "keep",
             "v0.2",
         )
-        assert connection.execute("select version from schema_migrations").fetchone() == (1,)
+        assert connection.execute(
+            "select version from schema_migrations order by version"
+        ).fetchall() == [(1,), (2,)]
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "select name from sqlite_master where type='table' and name like 'code_symbol_%'"
+            ).fetchall()
+        }
+        assert tables == {
+            "code_symbol_snapshot_runs",
+            "code_symbol_snapshots",
+            "code_symbol_changes",
+            "code_symbol_links",
+        }
 
 
 def test_idempotent_apply_creates_no_second_backup(tmp_path: Path) -> None:
@@ -192,9 +206,18 @@ def test_fresh_database_bootstrap_marks_packaged_schema_current(tmp_path: Path) 
 
     plan = MigrationService(database).bootstrap_fresh_database()
 
-    assert plan.schema_version == 1
+    assert plan.schema_version == 2
     assert plan.pending == ()
-    assert [item["version"] for item in plan.applied] == [1]
+    assert [item["version"] for item in plan.applied] == [1, 2]
+    with sqlite3.connect(database) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "select name from sqlite_master where type='table' and name like 'code_symbol_%'"
+            ).fetchall()
+        }
+    assert "code_symbol_snapshots" in tables
+    assert "code_symbol_changes" in tables
 
 
 def test_fresh_database_bootstrap_refuses_existing_user_data(tmp_path: Path) -> None:

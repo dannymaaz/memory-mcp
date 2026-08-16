@@ -59,6 +59,16 @@ _CONFLICT_COLUMNS: dict[str, tuple[str, ...]] = {
     "prompt_patterns": ("project_id", "title"),
     "retention_policies": ("project_id",),
     "memory_documents": ("project_id", "source_type", "source_id"),
+    "code_symbol_snapshot_runs": ("owner_id", "project_id", "repository", "commit_sha"),
+    "code_symbol_links": (
+        "owner_id",
+        "project_id",
+        "repository",
+        "logical_id",
+        "relation_type",
+        "target_type",
+        "target_id",
+    ),
 }
 
 
@@ -85,6 +95,10 @@ class SQLiteStorage:
             "memory_documents",
             "timeline_events",
             "retention_policies",
+            "code_symbol_snapshot_runs",
+            "code_symbol_snapshots",
+            "code_symbol_changes",
+            "code_symbol_links",
         }
     )
 
@@ -102,10 +116,14 @@ class SQLiteStorage:
     def initialize(self, *, bootstrap_migrations: bool = True) -> None:
         """Create the packaged schema and mark only genuinely new databases current."""
         database_was_missing = not self.path.exists()
-        schema_path = Path(__file__).with_name("sqlite_schema.sql")
+        schema_paths = (
+            Path(__file__).with_name("sqlite_schema.sql"),
+            Path(__file__).with_name("symbol_evolution_schema.sql"),
+        )
         connection = self.connect()
         try:
-            connection.executescript(schema_path.read_text(encoding="utf-8"))
+            for schema_path in schema_paths:
+                connection.executescript(schema_path.read_text(encoding="utf-8"))
             connection.commit()
         finally:
             connection.close()
