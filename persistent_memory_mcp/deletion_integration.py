@@ -18,26 +18,11 @@ from .retention import (
     select_retention_candidates,
     validate_confirmation_token,
 )
+from .tool_registry import ToolRegistry, get_tool_registry
 
 # Backward-compatible alias retained for existing tests/importers while the
 # consumed-fingerprint set is now shared with Dashboard maintenance actions.
 _USED_PLAN_FINGERPRINTS = USED_CONFIRMATION_FINGERPRINTS
-
-
-def _replace_registered_tool(server: Any, name: str, function: Callable[..., Any]) -> None:
-    tools = getattr(server, "_tools", None)
-    if isinstance(tools, dict):
-        tools[name] = function
-    manager = getattr(server, "_tool_manager", None)
-    managed = getattr(manager, "_tools", None)
-    if isinstance(managed, dict) and name in managed:
-        tool = managed[name]
-        if hasattr(tool, "fn"):
-            tool.fn = function
-        elif hasattr(tool, "function"):
-            tool.function = function
-        else:
-            managed[name] = function
 
 
 def _plan_from_dict(payload: dict[str, Any]) -> ForgetPlan:
@@ -102,22 +87,11 @@ def _delete_ids(
     return deleted
 
 
-def _register(server_module: Any, name: str, description: str, function: Callable[..., Any]) -> None:
-    setattr(server_module, name, function)
-    _replace_registered_tool(server_module.server, name, function)
-    try:
-        server_module.server.tool(name=name, description=description)(function)
-    except Exception:
-        pass
-    handlers = getattr(server_module, "TOOL_HANDLERS", None)
-    if isinstance(handlers, dict):
-        handlers[name] = function
-    schemas = getattr(server_module, "TOOL_SCHEMAS", None)
-    if isinstance(schemas, list) and not any(item.get("name") == name for item in schemas):
-        schemas.append({"name": name, "description": description})
-
-
-def install_confirmed_deletion(server_module: Any) -> tuple[Callable[..., Any], Callable[..., Any]]:
+def install_confirmed_deletion(
+    server_module: Any,
+    *,
+    registry: ToolRegistry | None = None,
+) -> tuple[Callable[..., Any], Callable[..., Any]]:
     """Install preview and execution tools once."""
     if getattr(server_module, "_confirmed_deletion_installed", False):
         return server_module.plan_memory_deletion, server_module.execute_memory_deletion
@@ -173,9 +147,7 @@ def install_confirmed_deletion(server_module: Any) -> tuple[Callable[..., Any], 
                 "plan": plan.to_dict(),
                 "confirmation_token": token,
                 "candidate_count": plan.count,
-                "missing_record_ids": sorted(
-                    set(record_ids or []) - set(plan.record_ids)
-                ),
+                "missing_record_ids": sorted(set(record_ids or []) - set(plan.record_ids)),
             }
         except Exception as exc:
             return {"error": str(exc), "tool": "plan_memory_deletion"}
@@ -241,14 +213,13 @@ def install_confirmed_deletion(server_module: Any) -> tuple[Callable[..., Any], 
 
     plan_memory_deletion.__name__ = "plan_memory_deletion"
     execute_memory_deletion.__name__ = "execute_memory_deletion"
-    _register(
-        server_module,
+    active_registry = registry or get_tool_registry(server_module)
+    active_registry.register(
         "plan_memory_deletion",
         "Previsualiza un borrado local y genera una confirmacion ligada al plan.",
         plan_memory_deletion,
     )
-    _register(
-        server_module,
+    active_registry.register(
         "execute_memory_deletion",
         "Ejecuta un plan de borrado local confirmado y sin cambios.",
         execute_memory_deletion,
