@@ -92,14 +92,24 @@ def dispatch_maintenance_action(
 ) -> tuple[int, dict[str, Any]]:
     """Validate one POST action and delegate to the existing safety services."""
     if path not in _ACTION_PATHS:
-        return 404, {"status": "error", "error": "not_found", "message": "Unknown maintenance action."}
-    if headers.get(ACTION_HEADER, "") != ACTION_HEADER_VALUE:
+        return 404, {
+            "status": "error",
+            "error": "not_found",
+            "message": "Unknown maintenance action.",
+        }
+    normalized_headers = {
+        str(name).casefold(): str(value)
+        for name, value in headers.items()
+    }
+    if normalized_headers.get(ACTION_HEADER.casefold(), "") != ACTION_HEADER_VALUE:
         return 403, {
             "status": "error",
             "error": "action_header_required",
             "message": f"{ACTION_HEADER}: {ACTION_HEADER_VALUE} is required.",
         }
-    content_type = str(headers.get("Content-Type", "")).split(";", 1)[0].strip().lower()
+    content_type = (
+        normalized_headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    )
     if content_type != "application/json":
         return 415, {
             "status": "error",
