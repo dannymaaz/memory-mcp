@@ -52,7 +52,7 @@ def _database(path: Path) -> tuple[Path, str]:
             (OWNER, workspace_id, "evolution", "Evolution"),
         ).fetchone()[0]
         decision_id = connection.execute(
-            "insert into decisions(project_id,owner_id,decision,rationale) values(?,?,?,?) returning id",
+            "insert into decisions(project_id,owner_id,summary,details) values(?,?,?,?) returning id",
             (project_id, OWNER, "Keep stable symbol identity", "History must survive moves"),
         ).fetchone()[0]
         task_id = connection.execute(
