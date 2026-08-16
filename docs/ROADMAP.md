@@ -1,13 +1,13 @@
 # Persistent Memory MCP delivery roadmap
 
-Persistent Memory MCP is a **local-first personal memory system for MCP-compatible development agents**. The v0.3 foundation established recoverable SQLite storage, explicit upgrades and cross-platform packaging. The active roadmap now focuses on turning stored memory into a **measurable Context Compiler** that can deliver only the context required for the next safe action.
+Persistent Memory MCP is a **local-first personal memory system and Context Compiler for MCP-compatible development agents**. The v0.3 foundation established recoverable SQLite storage, explicit upgrades and cross-platform packaging. The post-v0.3 sequence adds measurable context delivery, bounded repository evidence, persistent code provenance, quality regression gates and an operational project map.
 
-This document mirrors the canonical post-v0.3 roadmap maintained in Notion. Product scope remains one local installation, localhost-only operational UI, project/owner isolation, no shared workspace roles and no automatic code execution.
+This document mirrors the canonical roadmap maintained in Notion. Product scope remains one local installation, localhost-only operational UI, project/owner isolation, no shared workspace roles and no automatic repository code execution.
 
 ## Status legend
 
-- ✅ **Complete** — implemented, integrated and required repository regression evidence is part of the delivery gate.
-- 🟡 **In review / partial** — implementation exists but the end-to-end gate is not fully closed.
+- ✅ **Complete** — implemented, integrated, documented and validated by the required delivery gate.
+- 🟡 **In review** — implementation exists but the exact final-head gate/merge is still open.
 - ⬜ **Planned** — sequenced work not started yet.
 - 🚫 **Out of scope** — intentionally excluded from the product direction.
 
@@ -17,14 +17,14 @@ This document mirrors the canonical post-v0.3 roadmap maintained in Notion. Prod
 
 - private SQLite storage with WAL and foreign keys;
 - owner/project isolation and secret redaction;
-- WAL-safe backups using SQLite's backup API;
+- WAL-safe backup through SQLite's backup API;
 - SHA-256 backup manifests and integrity verification;
 - read-only `memory-mcp health` diagnostics;
-- two-phase confirmed restore with a verified safety backup and rollback;
+- two-phase confirmed restore with safety backup and rollback;
 - versioned checksum-verified SQLite migrations;
 - explicit `memory-mcp-migrate` preview/apply flow;
-- fail-closed startup when an existing database needs migration;
-- deterministic close semantics for context-managed SQLite connections.
+- fail-closed startup for stale existing schemas;
+- deterministic SQLite connection close semantics.
 
 ### Package and upgrade safety — ✅ Complete foundation
 
@@ -32,80 +32,78 @@ This document mirrors the canonical post-v0.3 roadmap maintained in Notion. Prod
 - validated immutable RuntimeSettings foundation;
 - Ubuntu, Windows and macOS CI across Python 3.11–3.13;
 - wheel/sdist build and clean-install validation;
-- real installed v0.2.0 → current schema migration regression with existing data preserved;
+- installed v0.2.0 → current schema migration regression with existing data preserved;
 - release-artifact checksums and backup-first rollback documentation.
 
-### Memory, search and development intelligence — ✅/🟡 Foundation
-
-Complete foundations:
+### Memory, search and development intelligence — ✅ Foundation
 
 - decisions, tasks, warnings, sessions, checkpoints and file memory;
-- hybrid semantic + lexical search;
-- persisted embedding lifecycle and local fallback;
+- hybrid semantic + lexical search with local fallback;
+- persisted embedding lifecycle;
 - Git repository/branch/commit verification;
-- code symbol extraction and bounded impact graphs;
+- Python/TypeScript/JavaScript/SQL symbol extraction;
+- bounded code-impact graphs;
 - progressive repository map → file → symbol → fragment retrieval;
 - persistent symbol snapshots/evolution with typed evidence;
 - duplicate/contradiction intelligence;
-- deployment history, risk gates and evaluation regressions;
-- localhost dashboard and bounded Galaxy knowledge view.
+- deployment history/risk gates;
+- localhost dashboard and bounded Galaxy views.
 
-Known partial areas that the remaining roadmap addresses:
-
-- automatic continuation checkpoints remain partial;
-- Context Compiler quality guardrails are in review under MEM-39 / PR #66;
-- Galaxy still needs an operational projection rather than being only a knowledge visualization.
+Automatic continuation remains a parallel partial capability; it is not allowed to displace the mandatory Context Compiler sequence.
 
 ## Post-v0.3 mandatory sequence
-
-The following order is intentional. A later step should not bypass an earlier contract because every layer depends on the evidence and budget semantics established before it.
 
 ### 1. Versioned Context Packet and real token accounting — ✅ Complete
 
 **Notion:** MEM-36  
-**GitHub:** Issue #56 / PR #60
+**GitHub:** Issue #56 / PR #60  
+**Gate:** Quality #226
 
 Delivered:
 
-- stable `Context Packet` v1 through the real optimizer/model-routing path;
-- packet version, objective, next safe action when available, provenance and verification state;
+- stable Context Packet v1 on the real optimizer/model-routing path;
+- objective, next safe action, provenance and verification state;
 - hard serialized token budget and authoritative final count;
 - tokenizer/model identity with deterministic provider-free fallback;
-- selected/dropped/compressed/token-cost metrics per context block;
-- compatibility with existing `build_context()` callers and 256-token requests.
+- selected/dropped/compressed/token-cost metrics per block;
+- compatibility with historical `build_context()` callers and 256-token requests.
 
-Validated by Quality #226 across Ubuntu/Windows/macOS and Python 3.11–3.13. Reference measurements against `gpt-4o` / `tiktoken:o200k_base`:
+Reference fallback measurements against `gpt-4o` / `tiktoken:o200k_base`:
 
-- Spanish fixture: 69 reference vs 80 fallback — **15.94% error**;
-- source-code fixture: 138 reference vs 140 fallback — **1.45% error**;
-- guardrail: worst fixture error ≤40%; validated worst case **15.94%**.
+| Fixture | Reference | Deterministic fallback | Error |
+|---|---:|---:|---:|
+| Spanish prose | 69 | 80 | **15.94%** |
+| Source code | 138 | 140 | **1.45%** |
+
+The guardrail allows ≤40% error on the initial fixtures; the validated worst case is 15.94%.
 
 ### 2. Progressive repository retrieval — ✅ Complete
 
 **Notion:** MEM-37  
-**GitHub:** Issue #61 / PR #62
+**GitHub:** Issue #61 / PR #62  
+**Gate:** Quality #235
 
-The implementation expands repository evidence in stages instead of reading/indexing every file content up front:
+Repository evidence expands in stages instead of loading every source file:
 
-1. compact repository/directory map from `git ls-files`;
-2. deterministic relevant-file ranking using path evidence and bounded local `git grep` signals;
-3. symbol extraction only from bounded candidate files using the existing Python/TypeScript/JavaScript/SQL parsers;
+1. compact repository map from `git ls-files`;
+2. deterministic candidate-file ranking with path + bounded local `git grep` evidence;
+3. symbol extraction only from bounded candidates;
 4. bounded graph-neighbor expansion;
-5. exact line fragments only for selected symbols.
+5. exact selected line fragments.
 
-Safety and contract properties:
+Safety/contract guarantees:
 
-- normalized repository-relative paths with traversal/root-escape rejection;
-- `RuntimeSettings.ignore_patterns` plus existing code-intelligence excludes;
-- stable score ordering and bounded cursor pagination;
-- cursor fingerprints include query, Git commit and candidate-file hashes, so relevant dirty working-tree changes invalidate stale cursors;
-- fragment provenance includes path, start/end lines, fragment SHA-256, file SHA-256 and commit/ref;
-- recognized secrets are redacted before fragment emission;
-- explicit caps for map files, parsed files, symbols, graph neighbors, file bytes, total bytes, fragment lines, page size and tokens;
-- final serialized retrieval uses the Context Packet token-counter contract rather than a separate estimator;
+- traversal/root-escape rejection;
+- configured ignore patterns plus code-intelligence excludes;
+- deterministic score ordering and bounded cursor pagination;
+- cursor fingerprints bound to query, Git commit and candidate-file hashes;
+- SHA-256 + Git commit/ref provenance per fragment;
+- secret redaction before fragment emission;
+- explicit file/symbol/neighbor/byte/page/token limits;
+- shared Context Packet token-counter contract;
 - repository code is never executed.
 
-Reproducible PR #62 evaluation (`scripts/evaluate_repository_retrieval.py`):
+Reference evaluation:
 
 | Metric | Result |
 |---|---:|
@@ -114,114 +112,171 @@ Reproducible PR #62 evaluation (`scripts/evaluate_repository_retrieval.py`):
 | Parse fraction | **7.5%** |
 | Selected fragments | **2** |
 | Fragment bytes | **284 B** |
-| Target file lines | **125** |
-| Target fragment lines | **7** |
-| Fragment/file ratio | **5.6%** |
+| Target fragment/file ratio | **5.6%** |
 | Final retrieval tokens | **1,305 / 1,400** |
 
-Additional regressions verify symbol-only discovery, stale cursors after committed and uncommitted candidate changes, secret redaction, Python/TS/JS/SQL symbols, path traversal, ignored paths and byte/token limits.
-
-### 3. Code provenance and symbol evolution — ✅ Complete
+### 3. Persistent code provenance and symbol evolution — ✅ Complete
 
 **Notion:** MEM-38  
-**GitHub:** Issue #63 / PR #64
+**GitHub:** Issue #63 / PR #64  
+**Gate:** Quality #250
 
-PR #64 persists code evolution instead of treating parser output as timeless current truth.
+Delivered:
 
-Delivered contract:
+- SQLite schema v2 with symbol snapshot runs, snapshots, classified changes and typed evidence links;
+- migration `0002` through preview → verified backup → transactional apply;
+- clean-HEAD, owner/project/repository-scoped idempotent capture;
+- bounded/redacted signatures and hashes without source bodies;
+- nearest persisted Git ancestor comparison;
+- `added`, `modified`, `moved`, `renamed`, `deleted`, `unchanged` classification;
+- stable logical identity across moves and conservative unique rename matches;
+- deterministic same-second tie-breaking;
+- file/commit/test evidence and validated decision/task links;
+- explicit `verified`, `stale`, `contradicted`, `missing_source`, `unverified` evidence states;
+- bounded symbol-history queries using the shared token-counter contract.
 
-- SQLite schema v2 with snapshot runs, per-symbol snapshots, classified changes and typed evidence links;
-- migration `0002` through the existing preview → verified backup → transactional apply lifecycle;
-- fresh databases bootstrap migration history `[1, 2]`; historical v0.2 installs upgrade through both versions while preserving existing data;
-- capture is scoped by owner + project + repository and accepts only a clean Git HEAD;
-- one idempotent run per owner/project/repository/commit;
-- bounded/redacted signatures and SHA-256 hashes are persisted without source bodies;
-- nearest persisted Git ancestor is used as the comparison baseline;
-- changes are classified as `added`, `modified`, `moved`, `renamed`, `deleted` or `unchanged`;
-- stable `logical_id` survives exact moves and conservative unique rename matches;
-- rename matching prefers exact identity/body evidence and only falls back to a normalized bounded signature when the candidate is unique on both sides;
-- deterministic `rowid` tie-breaking prevents same-second SQLite timestamps from selecting stale snapshots;
-- file/commit/test evidence is added automatically where available;
-- decision/task evidence requires explicit owner/project validation;
-- evidence can be marked `stale`, `contradicted`, `missing_source` or `unverified` without deleting history;
-- symbol history uses the shared Context Packet token-counter/budget contract;
-- the runtime exposes `capture_symbol_snapshot`, `get_symbol_history`, `compare_symbol_commits`, `link_symbol_memory` and `invalidate_symbol_evidence` for local SQLite installations.
+The reproducible evaluation covers Python, TypeScript, JavaScript and SQL and validated **1 renamed, 1 moved and 2 modified** symbols while preserving rename identity.
 
-Reproducible evaluation (`scripts/evaluate_symbol_evolution.py`) requires Python, TypeScript, JavaScript and SQL coverage, rename identity continuity, moved/renamed/modified classification and a verified current state. The validated delivery produced **1 renamed, 1 moved and 2 modified** symbols while preserving the renamed Python symbol identity.
-
-**Final gate:** Quality #250 passed the exact PR #64 HEAD across Ubuntu/Windows/macOS, Python 3.11–3.13, reference evaluations, dependency audit and installed v0.2.0 → schema v2 release-artifact upgrade. PR #64 is merged and Issue #63 / MEM-38 are complete.
-
-### 4. Context quality and regression guardrails — 🟡 In review
+### 4. Context quality and regression guardrails — ✅ Complete
 
 **Notion:** MEM-39  
-**GitHub:** Issue #65 / PR #66
+**GitHub:** Issue #65 / PR #66  
+**Gate:** Quality #262
 
-The fourth layer converts retrieval quality and safety from informal expectations into deterministic CI gates.
+Delivered:
 
-Implemented in PR #66:
+- versioned non-sensitive local coding-task corpus;
+- explicit versioned thresholds;
+- deterministic evaluator over the real progressive retrieval path;
+- file/symbol recall and precision, hard token fit, token savings, provenance coverage and latency metrics;
+- fixture/evaluator/threshold/tokenizer/model identity;
+- unit tests proving deliberate metric degradation fails closed;
+- adversarial cases for expired/untrusted memory, prompt injection, dirty cursors, rename continuity, contradicted evidence and dirty-Git stale evidence;
+- Ubuntu/Windows/macOS quality + adversarial gates.
 
-- versioned, non-sensitive local golden corpus of coding tasks;
-- expected relevant files/symbols and deterministic task outcomes;
-- local evaluator over the real `ProgressiveRepositoryRetriever` path, not a parallel retrieval implementation;
-- recorded fixture, evaluator, threshold, tokenizer and model identity;
-- metrics for file recall@5, symbol recall@8, file/symbol precision, hard token fit, token savings, provenance coverage and maximum task latency;
-- explicit versioned thresholds checked by `quality_guardrails.evaluate_quality_thresholds()`;
-- unit regression proving deliberate degradation of retrieval, budget, provenance, safety or latency fails the gate;
-- adversarial trust checks for expired memory, prompt-injection/untrusted memory and dirty-repository cursor invalidation;
-- adversarial symbol-provenance checks for rename continuity, explicit contradiction preservation and dirty Git evidence becoming stale;
-- cross-platform reference jobs execute both quality thresholds and adversarial provenance guardrails.
+Initial v1 baseline:
 
-Initial deterministic baseline from the version-1 corpus:
-
-| Metric | Observed baseline | Gate |
+| Metric | Baseline | Gate |
 |---|---:|---:|
 | File recall@5 | **1.000** | ≥ **1.000** |
 | File precision@5 | **0.200** | ≥ **0.200** |
 | Symbol recall@8 | **1.000** | ≥ **1.000** |
 | Symbol precision@8 | **0.125** | ≥ **0.125** |
 | Token-fit rate | **1.000** | ≥ **1.000** |
-| Token savings vs supported-repository baseline | **0.7722** | ≥ **0.400** |
+| Token savings | **0.7722** | ≥ **0.400** |
 | Provenance coverage | **1.000** | ≥ **1.000** |
 | Safety pass rate | **1.000** | ≥ **1.000** |
-| Maximum observed task latency | **~149 ms** on first reference run | ≤ **20,000 ms** |
 
-The precision thresholds intentionally protect the current baseline rather than claiming the ranking is already optimal. Later ranking work may raise them, but may not lower recall, provenance, budget or safety gates silently.
+The precision floors protect the current baseline; they are not claims of optimal ranking.
 
-Remaining before MEM-39 is complete:
+### 5. Operational project map / risk-oriented Galaxy — 🟡 In review
 
-- [x] quality corpus and explicit threshold document;
-- [x] deterministic evaluator against the real retrieval path;
-- [x] hard boolean safety/provenance checks;
-- [x] deliberate-regression unit test;
-- [x] expired/untrusted memory and dirty-cursor adversarials;
-- [x] rename/contradiction/dirty-Git symbol adversarials;
-- [x] quality/adversarial commands wired into Ubuntu/Windows/macOS reference CI;
-- [ ] exact final PR #66 HEAD passes the full Quality matrix after documentation synchronization;
-- [ ] README, ROADMAP, IMPLEMENTATION_STATUS, public evaluation documentation and Notion synchronized;
-- [ ] PR #66 merged and MEM-39 marked complete.
+**Notion:** MEM-40  
+**GitHub:** Issue #67 / PR #68
 
-### 5. Operational project map / Galaxy — ⬜ Planned
+PR #68 converts the existing bounded Galaxy into an operational projection **without adding another repository scanner or graph database**.
 
-Galaxy becomes an operational projection only after Context Packet, retrieval, code provenance and quality gates are measurable.
+#### Operational read model
 
-Planned views:
+`OperationalMapService` composes existing SQLite and persistent `code_symbol_*` evidence into bounded, deterministic views:
 
-- active work and next safe actions;
-- stale/contradicted/unverified memories;
-- repository hotspots and symbol relationships;
-- token-cost and retrieval diagnostics;
-- backup/health state and maintenance readiness;
-- bounded drill-down without exposing the dashboard remotely.
+- global owner-scoped project overview;
+- per-project impact graph;
+- project → repository → file → symbol relationships;
+- verified symbol links to tasks, decisions, files/tests/deployments where present;
+- project-level warnings/tasks/decisions;
+- risk and persisted verification state;
+- current-change affected-area projection based only on latest persisted repository snapshot runs.
+
+The map is read-only and emits compact metadata. It does not return full source bodies, decision/task details, session/checkpoint bodies or absolute repository roots. Short labels pass through existing secret redaction.
+
+#### Owner isolation and HTTP surface
+
+Operational owner resolution fails closed:
+
+1. use configured `--owner-id` / `OWNER_ID` when present;
+2. otherwise infer only when exactly one project owner exists;
+3. reject no-owner or ambiguous multi-owner databases instead of mixing data.
+
+New localhost-only endpoints:
+
+```text
+GET /api/operational/projects
+GET /api/operational/graph?project_id=<id>
+GET /api/operational/export.json?project_id=<id>
+GET /galaxy/operational?project_id=<id>
+```
+
+Supported filters include `verification`, `risk` and project-scoped `changed_only`. Existing Dashboard/Galaxy endpoints remain compatible.
+
+#### Risk-oriented Galaxy
+
+Operational mode adds:
+
+- risk filter;
+- verification-state filter;
+- changed-only filter;
+- visible critical/high/medium, stale and contradicted states;
+- changed/missing/risk/verification summary counts;
+- separate operational SVG/PNG export names;
+- existing keyboard/ARIA, drag, zoom, focus and minimap behavior.
+
+#### Bounds and performance gate
+
+`scripts/evaluate_operational_map.py` is part of the cross-platform reference CI jobs. Fixture:
+
+- 20 active-owner projects plus one foreign-owner project;
+- 120 symbols across 12 files;
+- 20 tasks;
+- 24 currently changed symbols concentrated in a bounded affected area.
+
+CI limits: max 20 projects, 180 nodes, 400 edges, 50 records per kind; latency ceiling is a deliberately non-flaky **5,000 ms** for overview/full/changed graph.
+
+Validated structural output is identical across reference platforms:
+
+| Metric | Result |
+|---|---:|
+| Overview projects | **20** |
+| Full graph nodes | **154** |
+| Full graph edges | **173** |
+| Changed-area nodes | **55** |
+| Changed-area edges | **74** |
+
+Observed reference latency:
+
+| Platform | Overview | Full graph | Changed-area graph |
+|---|---:|---:|---:|
+| Ubuntu | **3.04 ms** | **6.26 ms** | **4.35 ms** |
+| Windows | **4.99 ms** | **8.08 ms** | **5.36 ms** |
+| macOS | **5.65 ms** | **8.56 ms** | **4.15 ms** |
+
+These are regression-fixture observations, not production SLA claims. The gate also requires owner isolation, bounds, read-only output, secret redaction, no absolute repository root, no full body fields and a genuinely reduced `changed_only` graph.
+
+Remaining before MEM-40 is complete:
+
+- [x] owner-scoped bounded operational read model;
+- [x] current-change / risk / verification semantics;
+- [x] cross-owner isolation and fail-closed owner resolution;
+- [x] localhost-only operational HTTP endpoints and bounded export;
+- [x] risk-oriented operational Galaxy with legacy compatibility;
+- [x] HTTP/security/UI/read-model regression tests;
+- [x] reproducible cross-platform bounds/latency gate;
+- [x] public operational-map documentation;
+- [ ] README, IMPLEMENTATION_STATUS, `llms.txt` and Notion fully reconciled;
+- [ ] exact final PR #68 HEAD passes complete Quality after documentation sync;
+- [ ] PR #68 merged and MEM-40 marked complete.
+
+See [OPERATIONAL_MAP.md](OPERATIONAL_MAP.md) for the detailed public contract.
 
 ## Parallel non-blocking work
 
-These items may receive maintenance fixes but must not displace the mandatory sequence above:
+These items may receive maintenance fixes after the mandatory phase but should not silently redefine it:
 
-- dashboard pagination and accessible empty/loading/error states;
 - automatic project resolution and continuation capture;
-- provider-specific configuration cleanup;
 - broader embedding/search benchmarks;
-- optional Supabase/PostgreSQL adapter maintenance.
+- provider-specific configuration cleanup;
+- optional Supabase/PostgreSQL adapter maintenance;
+- further Dashboard pagination/UX refinements.
 
 ## Product scope decision — 🚫 No collaborative SaaS
 
@@ -237,17 +292,18 @@ Workspace invitations, shared memberships, team-role hierarchies, billing and a 
 
 ## Definition of done for each roadmap step
 
-A step is not complete until all of the following are true:
+A step is incomplete until all are true:
 
 1. the code path is integrated into the real product rather than only exposed as a helper;
 2. deterministic tests cover success, failure and boundary behavior;
 3. the relevant Ubuntu/Windows/macOS CI gate passes;
-4. measurable evidence is recorded when the step introduces a quality or cost claim;
-5. README, this ROADMAP, IMPLEMENTATION_STATUS and the corresponding Notion task agree;
+4. measurable evidence is recorded for quality/cost/performance claims;
+5. README, ROADMAP, IMPLEMENTATION_STATUS, public docs and Notion agree;
 6. the implementation does not broaden local-first scope or silently execute destructive/code actions.
 
 ## Current recommended order
 
-1. Finish the exact-head gate and merge **PR #66 — Context Compiler quality regression guardrails**.
-2. Mark MEM-39 complete with the final cross-platform metrics and thresholds.
-3. Start **operational project map / Galaxy** using the verified Context Packet, retrieval, symbol-provenance and quality contracts.
+1. Finish documentation synchronization for **PR #68 / MEM-40**.
+2. Freeze the exact final PR #68 HEAD and require the complete Quality matrix.
+3. If green, merge PR #68 and mark MEM-40 complete.
+4. Re-evaluate the post-v0.3 phase definition of done before starting any new numbered milestone; do not invent a new phase without an explicit roadmap decision.
