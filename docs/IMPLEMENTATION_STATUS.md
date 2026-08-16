@@ -1,87 +1,104 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled after PR #80 / MEM-29 merged with Quality #346. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled after PR #91 / Quality #368 on 2026-08-16. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
-The v0.3 technical foundation and the complete five-step Context Compiler phase are delivered. Post-phase reliability work now also includes automatic continuation, deterministic keyset pagination, Dashboard maintenance/UX and an explicit Application composition root with idempotent MCP Tool Registry.
+The v0.3 technical foundation, the complete five-step Context Compiler phase and the planned post-phase reliability/architecture work are delivered. The repository now also contains the guarded PyPI Trusted Publishing path.
 
-The principal unfinished work is no longer application architecture. It is **release/distribution reconciliation**: v0.3.0 is prepared and validated, but the repository currently has no `v0.3.0` tag or GitHub Release, and `main` has no PyPI Trusted Publishing workflow. External PyPI account configuration becomes the blocker only after the repository-side tag/release/publication path is prepared.
+The principal unfinished work is **operational publication**, not application implementation:
+
+- the immutable v0.3.0 release candidate is validated;
+- the repository-side publication workflow is merged and validated;
+- `v0.3.0` has not yet been tagged/published as a GitHub Release;
+- PyPI Trusted Publisher account configuration and public publication remain external/operational steps;
+- MCP Registry submission follows successful public PyPI validation.
 
 ## Current capability matrix
 
 | Capability | Status | Evidence | Remaining gap |
 |---|---|---|---|
-| SQLite local-first storage | Complete foundation | WAL, foreign keys, schema v2, backup-first migrations | Future numbered migrations as schema evolves |
-| Backup / manifest / health / restore | Complete foundation | PR #29/#35/#39/#43 | Optional rotation/signing refinements |
+| SQLite local-first storage | Complete | WAL, foreign keys, schema v2, backup-first migrations | Future numbered migrations as schema evolves |
+| Backup / manifest / health / restore | Complete | PR #29/#35/#39/#43 | Optional rotation/signing refinements |
 | Installed upgrade lifecycle | Complete | real v0.2.0 → v0.3/current package regressions | Future release migrations |
-| Runtime Settings | Complete foundation | validated SQLite-first configuration | Specialized provider settings remain incremental |
+| Runtime Settings | Complete | validated SQLite-first configuration | Specialized provider settings remain incremental |
 | Context Packet + token accounting | Complete | PR #60 / Quality #226 | Extend only as evidence contracts evolve |
 | Progressive repository retrieval | Complete | PR #62 / Quality #235 | Ranking changes remain behind quality gates |
 | Persistent symbol provenance/evolution | Complete | PR #64 / Quality #250 | Richer language relationships later |
 | Context quality/adversarial gates | Complete | PR #66 / Quality #262 | Thresholds can tighten, not silently regress |
-| Operational project map / Galaxy | Complete | PR #68 / Quality #282 | Additional UX refinement only |
+| Operational project map / Galaxy | Complete | PR #68 / Quality #282 | Optional UX refinement only |
 | Automatic Continuation Contract | Complete | PR #71 / Quality #290 | Future fields only when justified |
 | Deterministic keyset pagination | Complete | PR #73 / MEM-30 / Quality #306 | Optional remote-adapter parity if later required |
-| Hybrid search / embeddings | Complete foundation | semantic + lexical local fallback | Broader quality/cost benchmark corpus |
-| Dashboard maintenance/UX | Complete | PR #77 / Issue #76 / MEM-12 / Quality #338 | Future optional UX polish only |
-| Application container / Tool Registry | **Complete** | PR #80 / Issue #75 / MEM-29 / Quality #346 | Migrate additional integrations only when evidence justifies it |
-| v0.3.0 GitHub tag/release | **In review** | PR #54 merged; release commit `4dc160c…`; tag workflow present | Create exact tag, pass artifact workflow, create GitHub Release |
-| PyPI publication | **In review → external dependency** | `docs/RELEASING.md`; Issue #53 | Add publication workflow, then configure Trusted Publisher and publish exact release artifacts |
+| Dashboard maintenance/UX | Complete | PR #77 / Quality #338 | Optional UX polish only |
+| Application container / Tool Registry | Complete | PR #80 / Quality #346 | Migrate more integrations only when justified |
+| Security policy / dependency automation | Complete | PR #83 / Quality #352 | Routine maintenance |
+| MCP SDK v1 compatibility | Complete | PR #85 / Quality #360 | Deliberate MCP v2 migration tracked in #88 |
+| Immutable v0.3.0 release candidate | Complete | PR #89 / Quality #361 / `9e0a084d...` | Operational tag/release creation |
+| Repository PyPI publishing path | Complete | PR #91 / Quality #368 / `9f439442...` | External Trusted Publisher + release assets required |
+| Public GitHub v0.3.0 release | Pending | Issue #53 | Tag exact release SHA, pass artifact workflow, create release |
+| Public PyPI publication | External/operational | `publish-pypi.yml`, `docs/RELEASING.md` | Configure trust, publish exact assets, smoke-test |
 | MCP Registry publication | Pending after PyPI | MEM-33 / Issue #53 | Stable public package/release URLs first |
 | Teams / public collaboration | Out of scope | explicit product decision | no implementation planned |
 
 ## Completed Context Compiler phase
 
-1. ✅ **Context Packet + model-aware token accounting** — PR #60 / Quality #226.
-2. ✅ **Progressive repository retrieval** — PR #62 / Quality #235.
-3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / Quality #250.
-4. ✅ **Context-quality regression guardrails** — PR #66 / Quality #262.
-5. ✅ **Operational project map / risk-oriented Galaxy** — PR #68 / Quality #282.
+1. ✅ Context Packet + model-aware token accounting — PR #60 / Quality #226.
+2. ✅ Progressive repository retrieval — PR #62 / Quality #235.
+3. ✅ Persistent code provenance and symbol evolution — PR #64 / Quality #250.
+4. ✅ Context-quality regression guardrails — PR #66 / Quality #262.
+5. ✅ Operational project map / risk-oriented Galaxy — PR #68 / Quality #282.
 
-The phase tracker is closed. No sixth numbered phase item is implied by this document.
+The phase tracker is closed. No sixth numbered phase item is implied.
 
 ## Post-phase reliability
 
 ### Automatic Continuation Contract — complete
 
-PR #71 / MEM-31 completed the lifecycle gap that remained after the original session foundation. Continuation Contract v1 stores a bounded/redacted checkpoint containing objective, completed/pending work, blockers, relevant files, validation, next safe action and credential-free Git identity. Repository-bound project resolution fails closed on ambiguous strongest matches, and explicit close, handoff and idle expiry share the same continuation path.
+PR #71 provides repository-bound project resolution, a bounded/redacted Continuation Contract v1 and one shared continuation path for explicit close, handoff and idle expiry.
 
 See [CONTINUATION.md](CONTINUATION.md).
 
 ### Deterministic keyset pagination — complete
 
-PR #73 / MEM-30 adds bounded SQLite keyset paging while preserving historical `select()` compatibility. The contract provides a default page size of 50, hard maximum 200, opaque versioned cursors, query fingerprints, deterministic timestamp + `id` boundaries, first-page snapshot anchoring, validated filter/order identifiers and fail-closed malformed/cross-query cursors.
-
-It is integrated into MCP history reads and localhost Dashboard drill-down. The cross-platform reference evaluator exercises 10,000 owner/project records plus foreign-owner noise and a post-page-1 insert to prove exact traversal without duplicate/skip/scope leakage.
+PR #73 / MEM-30 provides bounded SQLite keyset paging with default 50 / hard maximum 200, opaque versioned cursors, query fingerprints, deterministic timestamp + `id` boundaries, snapshot anchoring and owner/project isolation.
 
 See [PAGINATION.md](PAGINATION.md).
 
 ### Dashboard maintenance/UX — complete
 
-PR #77 / MEM-12 completed the genuine Dashboard operations subset while keeping the interface localhost-only. It reuses `HealthService`, backup/restore/retention primitives and signed confirmations rather than introducing raw mutation paths.
-
-Delivered health/storage/backup/verification/sensitivity status; explicit UI states; safe server-generated backup paths; signed restore preview/confirm with safety backup/rollback; signed selective deletion preview/confirm; shared consumed confirmation state between MCP and Dashboard; JSON/header/request-size protections and restrictive same-origin CSP.
-
-Quality #338 passed before merge `43790fdfe9c003a9347496a34b0360d17c95320b`.
+PR #77 / MEM-12 completed the localhost-only operational maintenance subset using existing Health, backup, restore and retention primitives. Quality #338 passed before merge `43790fdfe9c003a9347496a34b0360d17c95320b`.
 
 See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 
 ### Application composition + Tool Registry — complete
 
-PR #80 / MEM-29 introduces the explicit architecture boundary without a flag-day server rewrite.
+PR #80 / MEM-29 introduced `create_application(settings)` and one shared idempotent Tool Registry without rewriting the legacy server or changing public MCP tool contracts. Confirmed Deletion and Verified Restore/Maintenance were the first migrated integrations.
 
-`create_application(settings)` now owns the real runtime composition path. `Application` carries immutable settings, the active server module and the shared registry. Repeated construction with the same settings returns the existing composed application; attempting to recompose the process with incompatible settings fails explicitly.
-
-`ToolRegistry` centralizes dynamic MCP registration/replacement and synchronizes known FastMCP surfaces, module handlers and local tool schemas. Registration is idempotent by tool name; replacing an existing tool does not append duplicate schema entries. A new required tool uses FastMCP's public `tool(...)` API and registration failures raise clearly instead of being silently ignored.
-
-Confirmed Deletion and Verified Restore/Maintenance are the first integrations migrated away from duplicated private registry mutation helpers. Public tool names, signatures, payloads, storage contracts and destructive confirmation behavior remain compatible.
-
-The initialization order is documented and regression-tested, including the requirement that Continuation wrap session close before Session Lifecycle captures it.
-
-Quality #346 passed the full Ubuntu/Windows/macOS × Python 3.11–3.13 matrix plus reference token accounting, release-artifact/upgrade checks and dependency audit before squash merge `f85b4d691ce1716b20ad7a49a02ca62227d03614`.
+Quality #346 passed before squash merge `f85b4d691ce1716b20ad7a49a02ca62227d03614`.
 
 See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
+
+### Security and dependency maintenance — complete
+
+PR #83 recreated the useful work from stale PR #74 on current `main`, added `SECURITY.md` plus weekly Dependabot for Python/GitHub Actions, passed Quality #352 and merged as `25c7b7490ed309591af9b725114ad8f28375b298`.
+
+PR #74 is closed as superseded.
+
+### MCP SDK compatibility — complete
+
+Issue #81 identified that the previous broad MCP dependency could resolve MCP 2.x while the runtime still imported the v1 `mcp.server.fastmcp.FastMCP` API.
+
+PR #85 now constrains the current runtime to:
+
+```text
+mcp>=1.28,<2
+```
+
+It adds regressions proving the installed FastMCP v1 implementation is used instead of the local fallback and that the MEM-29 Tool Registry works against the installed implementation.
+
+Quality #360 passed on the exact PR head; squash merge: `df854b6ff28c12aeb47a7bd53bed84429dcbc58c`.
+
+Issue #88 owns the future deliberate MCP v2 `MCPServer` migration.
 
 ## Local data-safety contracts
 
@@ -91,28 +108,70 @@ See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
 - **restore:** preview → exact confirmation → fresh verified safety backup → atomic replacement → post-validation/rollback;
 - **migration:** preview → checksum verification → verified backup → transactional explicit apply;
 - **deletion:** exact scoped plan + short-lived single-use confirmation;
-- **Dashboard maintenance:** localhost-only adapter that reuses backup/restore/delete services rather than raw SQL;
+- **Dashboard maintenance:** localhost-only adapter reusing backup/restore/delete services rather than raw SQL;
 - **context/repository:** bounded, provenance-aware and non-executing by default.
 
-## v0.3.0 distribution state
+## v0.3.0 immutable release state
 
-Release preparation PR #54 is merged. Its validated release merge commit is `4dc160c1fdf0e2858337239c42c9085fe8097493`, and that commit reports package version `0.3.0` and contains the tag-triggered `Release artifacts` workflow. The final PR #54 head passed Quality #209.
+The original release preparation PR #54 produced `4dc160c1fdf0e2858337239c42c9085fe8097493`, but its broad MCP dependency was no longer safe as a release target.
 
-The controlled publication path is defined in [RELEASING.md](RELEASING.md):
+Release-only PR #89 applied only the MCP SDK compatibility repair to that isolated candidate and intentionally excluded later post-v0.3 features. Exact-head Quality #361 passed:
 
-1. create `v0.3.0` from `4dc160c…`, not from later post-v0.3 `main`;
-2. let the tag workflow validate and retain wheel/sdist/`SHA256SUMS`;
-3. create the GitHub Release using exactly that bundle;
-4. add a Trusted Publishing workflow that consumes those exact artifacts instead of rebuilding them;
-5. configure PyPI Trusted Publisher;
-6. publish and smoke-test `persistent-memory-mcp==0.3.0` from public PyPI;
-7. submit stable package/release metadata to MCP Registry.
+- Ubuntu/Windows/macOS × Python 3.11–3.13;
+- dependency audit;
+- wheel/sdist build and metadata validation;
+- SHA-256 generation/verification;
+- clean wheel installation;
+- real installed v0.2.0 → v0.3.0 upgrade validation.
 
-As reconciled on 2026-08-16, GitHub currently reports no tags and no releases for this repository, and `main` contains no PyPI publication workflow. Those steps therefore remain pending and must not be documented as already completed.
+PR #89 merged into `release/v0.3.0-final` as:
 
-## Repository maintenance state
+```text
+9e0a084dd9b179612082edef99e1c3c9bf563ffa
+```
 
-Stale draft PR #74 contains useful `SECURITY.md` and Dependabot configuration, but it is based on an obsolete branch and is conflictive. The correct path is to recreate those two improvements from current `main`, validate the new PR, then close the stale PR rather than force-merging old history.
+This is the **only valid `v0.3.0` tag target**. Current `main` contains later features and must not be tagged as v0.3.0.
+
+## PyPI Trusted Publishing path
+
+Canonical PR #91 was recreated from current `main`, pinned to the immutable release commit and passed exact-head Quality #368. It was squash-merged as:
+
+```text
+9f43944266b50706d6cb94809362b00d0c569017
+```
+
+`main` now contains `.github/workflows/publish-pypi.yml` with these guards:
+
+1. manual dispatch only;
+2. exact tag `v0.3.0`;
+3. final non-draft/non-prerelease GitHub Release required;
+4. tag must resolve exactly to `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+5. wheel/sdist/`SHA256SUMS` are downloaded from the GitHub Release rather than rebuilt;
+6. checksums, package version/metadata and `twine check` must pass;
+7. only the verified distributions reach the isolated `pypi` environment job;
+8. OIDC publication uses `id-token: write` only in that publish job.
+
+PR #84 and #90 were intentionally superseded as their bases became stale. Neither was merged.
+
+## Remaining public release operations
+
+The controlled sequence from [RELEASING.md](RELEASING.md) is now:
+
+1. create annotated `v0.3.0` from `9e0a084dd9b179612082edef99e1c3c9bf563ffa`;
+2. require the tag-triggered release-artifact workflow to succeed;
+3. verify wheel, sdist and `SHA256SUMS`;
+4. create the GitHub Release using exactly those artifacts;
+5. configure PyPI Trusted Publisher for owner `dannymaaz`, repository `memory-mcp`, workflow `publish-pypi.yml`, environment `pypi`;
+6. run the guarded publication workflow;
+7. install `persistent-memory-mcp==0.3.0` from public PyPI in a clean environment and smoke-test it;
+8. submit stable public metadata to MCP Registry;
+9. record final evidence in Issue #53 and Notion.
+
+Until successful public PyPI evidence exists, README installation must use repository/source installation rather than claiming the package is publicly installable.
+
+## Distribution-scope decision
+
+MEM-17's remaining product decision is documentation-only: optional Docker/Render/Railway-style self-managed deployments may be documented separately, but they are not requirements of the local-first core and must not imply hosted multi-user SaaS support.
 
 ## Product scope
 
@@ -122,7 +181,7 @@ Not planned: workspace invitations, team-role hierarchies, billing/organization 
 
 ## Next engineering order
 
-1. Complete **MEM-33 / Issue #53** from the exact v0.3.0 release commit: tag → artifact gate → GitHub Release → Trusted Publishing → public smoke test → MCP Registry.
-2. Recreate and validate the useful **security policy + Dependabot** changes from stale PR #74 on current `main`, then retire #74.
-3. Reconcile **MEM-17 distribution scope**, keeping optional Docker/deployment work separate from the local-first product core.
-4. Do not start another numbered product phase until release/distribution truth is synchronized across GitHub and Notion.
+1. Complete Issue #53 / MEM-33 operational publication: exact tag → artifact gate → GitHub Release → Trusted Publisher → public PyPI smoke test → MCP Registry.
+2. Resolve MEM-17 optional deployment documentation scope without changing the local-first product boundary.
+3. Once the v0.3.0 release is stable, evaluate Issue #88 for deliberate MCP v2 migration.
+4. Start no new numbered product phase until public release evidence and project records are synchronized.
