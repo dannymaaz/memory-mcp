@@ -116,7 +116,7 @@ def test_missing_server_registration_path_fails_clearly() -> None:
     module = SimpleNamespace(server=SimpleNamespace(), TOOL_HANDLERS={}, TOOL_SCHEMAS=[])
     registry = ToolRegistry(module)
 
-    with pytest.raises(ToolRegistryError, match="tool\(\) is unavailable"):
+    with pytest.raises(ToolRegistryError, match=r"tool\(\) is unavailable"):
         registry.register("required", "Required tool", lambda: None)
 
 
