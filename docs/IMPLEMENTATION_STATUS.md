@@ -1,14 +1,14 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for the post-v0.3 Context Compiler phase and PR #64. Persistent Memory MCP remains a local-first, personal and localhost-only product.
+Last reconciled for the post-v0.3 Context Compiler phase and PR #66. Persistent Memory MCP remains a local-first, personal and localhost-only product.
 
 ## Executive summary
 
 The local data-safety foundation is mature: private SQLite storage, owner/project isolation, WAL-safe backup, SHA-256 manifests, read-only health diagnostics, confirmed restore with rollback, versioned backup-first migrations, explicit upgrade tooling, deterministic SQLite connection lifecycle, validated Settings and cross-platform release-artifact testing.
 
-The first two post-v0.3 Context Compiler milestones are complete: PR #60 established Context Packet v1 with hard serialized token budgets, and PR #62 added progressive map → file → symbol → fragment repository retrieval with bounded cryptographic/Git provenance.
+The first three post-v0.3 Context Compiler milestones are complete: PR #60 established Context Packet v1 with hard serialized token budgets, PR #62 added progressive map → file → symbol → fragment repository retrieval with bounded cryptographic/Git provenance, and PR #64 added persistent commit-scoped symbol provenance/evolution with stable logical identity and typed evidence.
 
-PR #64 implements the third mandatory milestone: **persistent code provenance and symbol evolution**. Local SQLite can now retain commit-scoped symbol snapshots, stable logical identity across moves and conservative renames, classified changes and typed evidence instead of assuming that a parser result remains current forever. History output explicitly distinguishes verified source from stale, contradicted, missing or unverified evidence and shares the Context Packet token-budget contract.
+PR #66 / MEM-39 is the active fourth milestone: **Context Compiler quality regression guardrails**. It introduces a versioned non-sensitive golden corpus, deterministic quality metrics, explicit thresholds, deliberate-regression tests and adversarial provenance/trust scenarios so retrieval, budget or safety regressions block CI instead of silently shipping.
 
 ## Current capability matrix
 
@@ -21,16 +21,17 @@ PR #64 implements the third mandatory milestone: **persistent code provenance an
 | Confirmed restore | Complete foundation | Two-phase plan/execute, safety backup, rollback | Dashboard integration only |
 | Installed upgrade lifecycle | Complete | v0.2.0 → current schema package regression | Future release migrations |
 | Runtime Settings | Complete foundation | validated SQLite-first configuration | Specialized provider settings remain incremental |
-| Context ranking/filtering | Complete foundation | intent-aware selection, expiry/trust filtering, compression | Quality guardrails remain planned |
+| Context ranking/filtering | Complete foundation | intent-aware selection, expiry/trust filtering, compression | Ranking precision can be improved under fixed quality gates |
 | Context Packet v1 | **Complete foundation** | PR #60 / Quality #226 | Extend as later evidence types require |
 | Model-aware token accounting | **Complete foundation** | deterministic fallback + optional tiktoken reference | Broader benchmark corpus later |
-| Progressive repository retrieval | **Complete** | PR #62 / MEM-37 | Ongoing ranking/benchmark refinement |
-| Persistent symbol evolution | **Delivery implemented** | Issue #63 / PR #64 / MEM-38 | Exact final-head cross-platform gate + merge |
+| Progressive repository retrieval | **Complete** | PR #62 / MEM-37 | Ongoing ranking refinement behind CI thresholds |
+| Persistent symbol evolution | **Complete** | PR #64 / MEM-38 / Quality #250 | Richer language relationships later |
 | Git verification | Complete foundation | repository/branch/commit/file verification | Broader provenance consumers later |
 | Code intelligence | **Complete foundation** | Python/TS/JS/SQL extraction + bounded graph + persistent revision history | Richer language parsers/relationships later |
+| Context quality regression gates | **In review** | Issue #65 / PR #66 / MEM-39 | Exact final-head gate + merge |
 | Automatic continuation | Partial | sessions/checkpoints/handoff | project resolution + automatic milestone capture |
 | Hybrid search/embeddings | Complete foundation | semantic + lexical fallback | broader quality/cost benchmarks |
-| Evaluation/provenance suite | Complete foundation | agent, token, retrieval and symbol-evolution regressions | context-quality golden scenarios are Step 4 |
+| Evaluation/provenance suite | **In review** | agent, token, retrieval, symbol-evolution, quality and adversarial regressions | finalize MEM-39 delivery gate |
 | Dashboard/Galaxy | Partial foundation | localhost operational views + bounded graph | operational project map is roadmap Step 5 |
 | Teams / remote collaboration | Out of scope | explicit product decision | no implementation planned |
 
@@ -90,89 +91,96 @@ Reproducible evaluation:
 | Target fragment/file ratio | **5.6%** |
 | Final retrieval tokens | **1,305 / 1,400** |
 
-## Persistent symbol provenance and evolution — PR #64 / MEM-38
+## Persistent symbol provenance and evolution — complete
 
-### SQLite model and migration
-
-PR #64 advances local SQLite to schema v2 with four bounded tables:
+PR #64 / MEM-38 advanced local SQLite to schema v2 with:
 
 - `code_symbol_snapshot_runs` — one capture per owner/project/repository/commit;
 - `code_symbol_snapshots` — bounded symbol identity/provenance without source bodies;
 - `code_symbol_changes` — classified predecessor/current relationships;
 - `code_symbol_links` — typed evidence to files, commits, tests and validated project memory.
 
-Migration `0002` uses the existing migration contract: read-only preview, checksum verification, verified pre-migration backup and transactional apply. Fresh databases bootstrap migration history `[1, 2]`. The historical installed v0.2.0 upgrade regression now requires both migrations and proves existing task data survives while the symbol-evolution tables are created.
+Migration `0002` uses the existing migration contract: read-only preview, checksum verification, verified pre-migration backup and transactional apply. Fresh databases bootstrap migration history `[1, 2]`. The historical installed v0.2.0 upgrade regression requires both migrations and proves existing task data survives.
 
-### Capture and identity
+`SymbolEvolutionService.capture()` is owner/project/repository scoped, requires clean Git HEAD, is idempotent per captured commit, compares to the nearest persisted Git ancestor, stores bounded/redacted signatures and hashes instead of source bodies, and classifies `added`, `modified`, `moved`, `renamed`, `deleted` and `unchanged` symbols.
 
-`SymbolEvolutionService.capture()`:
+Logical identity is fail-safe: exact identity/body matches are preferred and a rename may use normalized bounded signature evidence only when unique on both old/new sides. Ambiguous candidates are never merged speculatively. Deterministic `rowid DESC` tie-breaking prevents same-second SQLite timestamp collisions from selecting stale snapshots.
 
-- is scoped by `OWNER_ID + project_id + repository`;
-- requires a clean Git HEAD and revalidates it before persistence;
-- is idempotent for an already captured commit;
-- finds the nearest persisted Git ancestor rather than assuming insertion order;
-- persists bounded/redacted signatures and signature/body/file hashes, never source bodies;
-- records `added`, `modified`, `moved`, `renamed`, `deleted` and `unchanged` changes.
+`get_symbol_history` distinguishes `verified`, `stale`, `contradicted`, `missing_source` and `unverified` evidence. File/commit/test links may be inferred from verified code evidence; decision/task links require explicit same-owner/project validation. Evidence invalidation preserves history.
 
-Logical identity is fail-safe:
+Reproducible evaluation covers Python, TypeScript, JavaScript and SQL and validated **1 renamed, 1 moved and 2 modified** symbols with rename identity preserved. Quality #250 passed the exact PR #64 HEAD across Ubuntu/Windows/macOS, Python 3.11–3.13, release artifacts, installed v0.2.0 upgrade and dependency audit. PR #64 is merged and MEM-38 is complete.
 
-- exact qualified identity is preferred;
-- exact unique body matches preserve identity across moves;
-- stronger name/signature matches are used next;
-- a name-only rename may use a normalized bounded signature only when that signature is unique on both old and new sides;
-- ambiguous candidates are not merged speculatively.
+## Context Compiler quality regression guardrails — PR #66 / MEM-39
 
-### Deterministic history and trust state
+### Versioned corpus and evaluator
 
-SQLite `datetime('now')` timestamps can collide within one second. PR #64 therefore uses deterministic `rowid DESC` tie-breaking wherever latest runs/snapshots/changes are selected. This prevents a just-captured current HEAD from being misclassified as stale because an older same-second snapshot happened to sort first.
+PR #66 adds:
 
-`get_symbol_history` returns bounded snapshots, classified changes and evidence plus one current state:
+- `tests/fixtures/context_quality_corpus.json` — non-sensitive versioned coding tasks with expected files/symbols;
+- `tests/fixtures/context_quality_thresholds.json` — explicit reviewable thresholds and evaluator version;
+- `scripts/evaluate_context_quality.py` — deterministic local evaluator over the real progressive retrieval path;
+- `persistent_memory_mcp/quality_guardrails.py` — threshold comparison logic reusable by tests;
+- `tests/test_quality_guardrails.py` — proves deliberate metric degradation fails the gate;
+- `scripts/evaluate_context_adversarial.py` — fail-safe symbol provenance/dirty-Git adversarial evaluation.
 
-- `verified` — current HEAD/file still matches the persisted evidence;
-- `stale` — repository state changed relative to the latest evidence;
-- `contradicted` — evidence was explicitly invalidated as conflicting;
-- `missing_source` — the source/symbol was deleted or unavailable;
-- `unverified` — evidence exists without a current verification claim.
+No remote service, telemetry or repository fixture code execution is required.
 
-Evidence invalidation updates state and reason metadata without deleting history.
+### Metrics and baseline
 
-### Evidence relationships
+The v1 corpus measures:
 
-Automatic evidence includes:
+- file recall@5 and precision@5;
+- symbol recall@8 and precision@8;
+- hard token-fit rate;
+- savings versus deterministic tokenization of the supported repository corpus;
+- provenance completeness for expected evidence;
+- maximum task latency;
+- hard safety pass rate.
 
-- `defined_in → file` with file hash;
-- `observed_at → commit`;
-- `tested_by → test` when the existing code graph proves a test symbol calls the target.
+Initial deterministic baseline from the first validated reference run:
 
-Explicit `decision` and `task` links are permitted only after validating the target belongs to the same owner/project scope. The schema also reserves the typed `deployment` target for future evidence producers rather than inventing unverified deployment links.
+| Metric | Observed | Required threshold |
+|---|---:|---:|
+| File recall@5 | **1.000** | ≥ **1.000** |
+| File precision@5 | **0.200** | ≥ **0.200** |
+| Symbol recall@8 | **1.000** | ≥ **1.000** |
+| Symbol precision@8 | **0.125** | ≥ **0.125** |
+| Token-fit rate | **1.000** | ≥ **1.000** |
+| Token savings | **0.7722** | ≥ **0.400** |
+| Provenance coverage | **1.000** | ≥ **1.000** |
+| Safety pass rate | **1.000** | ≥ **1.000** |
+| Maximum task latency | **~149 ms** | ≤ **20,000 ms** |
 
-### Runtime tools
+The precision floor intentionally protects the current ranking baseline; it is not presented as an optimal precision target. Future ranking changes may raise precision while recall, budget, provenance and safety remain non-regressible.
 
-Local SQLite runtime installs:
+### Adversarial requirements
 
-- `capture_symbol_snapshot`;
-- `get_symbol_history`;
-- `compare_symbol_commits`;
-- `link_symbol_memory`;
-- `invalidate_symbol_evidence`.
+The quality gate includes hard boolean scenarios that cannot be averaged away:
 
-### Reproducible evaluation
+- expired memory is excluded from compiled context;
+- prompt-injection/untrusted memory is excluded by default;
+- dirty relevant repository changes invalidate an existing retrieval cursor;
+- rename preserves the logical symbol identity when the unique bounded evidence contract allows it;
+- rename is classified explicitly;
+- contradicted evidence remains retained and visibly contradicted;
+- dirty Git state marks previously current symbol evidence `stale`.
 
-`scripts/evaluate_symbol_evolution.py` creates a deterministic two-commit repository containing Python, TypeScript, JavaScript and SQL. It captures both commits and fails unless all required checks pass.
+The cross-platform reference Quality jobs execute both `evaluate_context_quality.py` and `evaluate_context_adversarial.py` on Ubuntu, Windows and macOS. A regression in these safety/provenance checks returns a non-zero exit code and blocks CI.
 
-First validated Linux output:
+### Current delivery state
 
-| Metric | Result |
-|---|---:|
-| Languages | **javascript, python, sql, typescript** |
-| Initial symbols | **4** |
-| Renamed | **1** |
-| Moved | **1** |
-| Modified | **2** |
-| Rename preserves `logical_id` | **true** |
-| Renamed symbol current state | **verified** |
-
-The evaluation is part of the reference CI jobs on Ubuntu, Windows and macOS. The normal suite separately covers a three-commit history with movement, modification, rename, deletion, test evidence, decision/task links, explicit contradiction, idempotent recapture and dirty-working-tree stale detection.
+- [x] versioned corpus and thresholds;
+- [x] deterministic local evaluator using the production retrieval path;
+- [x] fixture/evaluator/tokenizer/model identity recorded;
+- [x] recall, precision, token fit, savings, provenance and latency metrics;
+- [x] hard safety pass rate;
+- [x] deliberate-regression test proves thresholds fail closed;
+- [x] expired/untrusted and dirty-cursor adversarial scenarios;
+- [x] rename/contradiction/dirty-Git symbol adversarial scenarios;
+- [x] quality and adversarial gates wired into cross-platform reference CI;
+- [ ] README, ROADMAP, IMPLEMENTATION_STATUS, public evaluation documentation and Notion fully reconciled;
+- [ ] exact final PR #66 HEAD passes complete Quality after documentation sync;
+- [ ] PR #66 merged and MEM-39 marked complete.
 
 ## Existing local data-safety contracts
 
@@ -234,25 +242,22 @@ Not planned:
 
 1. ✅ **Context Packet + token accounting** — PR #60 / MEM-36 complete.
 2. ✅ **Progressive repository retrieval** — PR #62 / MEM-37 complete.
-3. ✅ **Persistent code provenance/symbol evolution** — PR #64 / MEM-38 implementation complete; exact-head merge gate pending.
-4. ⬜ **Context-quality regression guardrails** — next after PR #64 merges.
-5. ⬜ **Operational project map / Galaxy** after the evidence layers above exist.
+3. ✅ **Persistent code provenance/symbol evolution** — PR #64 / MEM-38 complete; Quality #250 green.
+4. 🟡 **Context-quality regression guardrails** — PR #66 / MEM-39 in review.
+5. ⬜ **Operational project map / Galaxy** after MEM-39 closes.
 
-## Definition of done for PR #64 / MEM-38
+## Definition of done for PR #66 / MEM-39
 
-- [x] Schema v2 and migration `0002` implemented with packaged assets.
-- [x] Fresh schema and installed historical upgrade validate migrations `[1, 2]`.
-- [x] Clean-HEAD, project/owner-scoped, idempotent snapshot capture implemented.
-- [x] Added/modified/moved/renamed/deleted/unchanged classification implemented.
-- [x] Deterministic same-second history ordering implemented.
-- [x] Conservative unique rename matching preserves logical identity without speculative merges.
-- [x] File/commit/test evidence plus validated decision/task links implemented.
-- [x] Explicit evidence invalidation preserves history.
-- [x] Symbol history uses shared Context Packet token accounting and a hard budget.
-- [x] Reproducible Python/TypeScript/JavaScript/SQL evaluation added to cross-platform CI.
-- [x] README, ROADMAP, IMPLEMENTATION_STATUS and Notion synchronized in the branch.
-- [ ] Exact final PR head passes the complete Ubuntu/Windows/macOS Quality matrix and release-artifact validation.
-- [ ] PR #64 merged.
-- [ ] MEM-38 marked complete in Notion.
+- [x] Versioned non-sensitive coding-task corpus exists.
+- [x] Metrics and explicit thresholds are deterministic and locally reproducible.
+- [x] The evaluator uses the real retrieval/token/provenance contracts.
+- [x] Deliberate quality regression is proven to fail threshold evaluation.
+- [x] Expired and untrusted memory cases fail closed.
+- [x] Dirty repository retrieval state invalidates stale cursors.
+- [x] Rename identity, contradiction preservation and dirty-Git stale evidence are adversarial gates.
+- [x] Cross-platform reference CI invokes quality and adversarial evaluators.
+- [ ] Public and repository documentation synchronized with baseline and thresholds.
+- [ ] Exact final PR HEAD passes Ubuntu/Windows/macOS Quality and release-artifact validation.
+- [ ] PR #66 merged and MEM-39 marked complete in Notion.
 
-Step 4 begins only after those final gates close. Its focus is no longer storage or symbol identity: it will measure whether compiled context is actually relevant, provenance-complete, economical and resistant to stale/poisoned evidence.
+After MEM-39 closes, Step 5 can use verified quality/provenance signals to evolve Galaxy into an operational project map instead of building another unmeasured visualization layer.

@@ -53,7 +53,7 @@ Complete foundations:
 Known partial areas that the remaining roadmap addresses:
 
 - automatic continuation checkpoints remain partial;
-- context-quality golden scenarios still need explicit cost/relevance guardrails;
+- Context Compiler quality guardrails are in review under MEM-39 / PR #66;
 - Galaxy still needs an operational projection rather than being only a knowledge visualization.
 
 ## Post-v0.3 mandatory sequence
@@ -121,7 +121,7 @@ Reproducible PR #62 evaluation (`scripts/evaluate_repository_retrieval.py`):
 
 Additional regressions verify symbol-only discovery, stale cursors after committed and uncommitted candidate changes, secret redaction, Python/TS/JS/SQL symbols, path traversal, ignored paths and byte/token limits.
 
-### 3. Code provenance and symbol evolution — ✅ Delivery implemented
+### 3. Code provenance and symbol evolution — ✅ Complete
 
 **Notion:** MEM-38  
 **GitHub:** Issue #63 / PR #64
@@ -147,45 +147,62 @@ Delivered contract:
 - symbol history uses the shared Context Packet token-counter/budget contract;
 - the runtime exposes `capture_symbol_snapshot`, `get_symbol_history`, `compare_symbol_commits`, `link_symbol_memory` and `invalidate_symbol_evidence` for local SQLite installations.
 
-Reproducible regression (`scripts/evaluate_symbol_evolution.py`) creates a multi-language two-commit repository and requires:
+Reproducible evaluation (`scripts/evaluate_symbol_evolution.py`) requires Python, TypeScript, JavaScript and SQL coverage, rename identity continuity, moved/renamed/modified classification and a verified current state. The validated delivery produced **1 renamed, 1 moved and 2 modified** symbols while preserving the renamed Python symbol identity.
 
-| Check | Gate |
-|---|---:|
-| Languages | Python + TypeScript + JavaScript + SQL |
-| Rename preserves logical ID | **true** |
-| Renamed | **≥ 1** |
-| Moved | **≥ 1** |
-| Modified | **≥ 1** |
-| Current renamed symbol state | **verified** |
+**Final gate:** Quality #250 passed the exact PR #64 HEAD across Ubuntu/Windows/macOS, Python 3.11–3.13, reference evaluations, dependency audit and installed v0.2.0 → schema v2 release-artifact upgrade. PR #64 is merged and Issue #63 / MEM-38 are complete.
 
-The first validated CI execution produced **1 renamed, 1 moved and 2 modified** symbols and preserved the renamed Python symbol identity. The evaluation is wired into the Ubuntu/Windows/macOS reference jobs; exact final PR HEAD must pass those jobs plus the Python 3.11–3.13 matrix and release-artifact upgrade validation before merge.
+### 4. Context quality and regression guardrails — 🟡 In review
 
-Exit criteria for PR #64:
+**Notion:** MEM-39  
+**GitHub:** Issue #65 / PR #66
 
-- [x] versioned SQLite schema/migration and packaged assets implemented;
-- [x] clean-HEAD idempotent snapshot capture implemented;
-- [x] added/modified/moved/renamed/deleted classification implemented;
-- [x] deterministic history ordering and conservative rename identity implemented;
-- [x] typed file/commit/test/decision/task evidence with explicit invalidation implemented;
-- [x] hard-budget history output implemented;
-- [x] reproducible Python/TS/JS/SQL symbol-evolution evaluation added to cross-platform CI;
-- [x] README, ROADMAP, IMPLEMENTATION_STATUS and Notion synchronized in the branch;
-- [ ] exact final PR head passes the complete Quality matrix and release-artifact validation;
-- [ ] PR #64 merged and MEM-38 marked complete.
+The fourth layer converts retrieval quality and safety from informal expectations into deterministic CI gates.
 
-### 4. Context quality and regression guardrails — ⬜ Planned
+Implemented in PR #66:
 
-Starts after Step 3 is merged.
+- versioned, non-sensitive local golden corpus of coding tasks;
+- expected relevant files/symbols and deterministic task outcomes;
+- local evaluator over the real `ProgressiveRepositoryRetriever` path, not a parallel retrieval implementation;
+- recorded fixture, evaluator, threshold, tokenizer and model identity;
+- metrics for file recall@5, symbol recall@8, file/symbol precision, hard token fit, token savings, provenance coverage and maximum task latency;
+- explicit versioned thresholds checked by `quality_guardrails.evaluate_quality_thresholds()`;
+- unit regression proving deliberate degradation of retrieval, budget, provenance, safety or latency fails the gate;
+- adversarial trust checks for expired memory, prompt-injection/untrusted memory and dirty-repository cursor invalidation;
+- adversarial symbol-provenance checks for rename continuity, explicit contradiction preservation and dirty Git evidence becoming stale;
+- cross-platform reference jobs execute both quality thresholds and adversarial provenance guardrails.
 
-- define golden continuation scenarios;
-- measure relevance, provenance coverage and unnecessary-context rate;
-- compare token cost against task completion quality;
-- test poisoned/untrusted memory and stale code evidence;
-- make quality regressions visible in CI before context behavior ships.
+Initial deterministic baseline from the version-1 corpus:
+
+| Metric | Observed baseline | Gate |
+|---|---:|---:|
+| File recall@5 | **1.000** | ≥ **1.000** |
+| File precision@5 | **0.200** | ≥ **0.200** |
+| Symbol recall@8 | **1.000** | ≥ **1.000** |
+| Symbol precision@8 | **0.125** | ≥ **0.125** |
+| Token-fit rate | **1.000** | ≥ **1.000** |
+| Token savings vs supported-repository baseline | **0.7722** | ≥ **0.400** |
+| Provenance coverage | **1.000** | ≥ **1.000** |
+| Safety pass rate | **1.000** | ≥ **1.000** |
+| Maximum observed task latency | **~149 ms** on first reference run | ≤ **20,000 ms** |
+
+The precision thresholds intentionally protect the current baseline rather than claiming the ranking is already optimal. Later ranking work may raise them, but may not lower recall, provenance, budget or safety gates silently.
+
+Remaining before MEM-39 is complete:
+
+- [x] quality corpus and explicit threshold document;
+- [x] deterministic evaluator against the real retrieval path;
+- [x] hard boolean safety/provenance checks;
+- [x] deliberate-regression unit test;
+- [x] expired/untrusted memory and dirty-cursor adversarials;
+- [x] rename/contradiction/dirty-Git symbol adversarials;
+- [x] quality/adversarial commands wired into Ubuntu/Windows/macOS reference CI;
+- [ ] exact final PR #66 HEAD passes the full Quality matrix after documentation synchronization;
+- [ ] README, ROADMAP, IMPLEMENTATION_STATUS, public evaluation documentation and Notion synchronized;
+- [ ] PR #66 merged and MEM-39 marked complete.
 
 ### 5. Operational project map / Galaxy — ⬜ Planned
 
-Galaxy becomes an operational projection only after Context Packet, retrieval and code provenance are measurable.
+Galaxy becomes an operational projection only after Context Packet, retrieval, code provenance and quality gates are measurable.
 
 Planned views:
 
@@ -231,6 +248,6 @@ A step is not complete until all of the following are true:
 
 ## Current recommended order
 
-1. Finish the exact-head gate and merge **PR #64 — persistent code provenance/symbol evolution**.
-2. Start **context quality regression guardrails** with measurable golden scenarios.
-3. Evolve **Galaxy into an operational project map** using the verified data from the previous layers.
+1. Finish the exact-head gate and merge **PR #66 — Context Compiler quality regression guardrails**.
+2. Mark MEM-39 complete with the final cross-platform metrics and thresholds.
+3. Start **operational project map / Galaxy** using the verified Context Packet, retrieval, symbol-provenance and quality contracts.
