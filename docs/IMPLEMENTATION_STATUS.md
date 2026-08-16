@@ -1,287 +1,151 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for the post-v0.3 Context Compiler phase and PR #68. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled for PR #73 / MEM-30. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
-The local data-safety foundation is mature: private SQLite storage, owner/project isolation, WAL-safe backups, SHA-256 manifests, read-only health diagnostics, confirmed restore with rollback, versioned backup-first migrations, explicit upgrade tooling, deterministic SQLite connection lifecycle, validated Settings and cross-platform release-artifact testing.
+The v0.3 technical foundation and the complete five-step post-v0.3 Context Compiler phase are delivered. The product now has recoverable/versioned SQLite storage, hard context budgets, progressive repository retrieval, persistent code provenance, deterministic quality/adversarial CI gates and a bounded operational project map/Galaxy.
 
-The first four mandatory post-v0.3 Context Compiler milestones are complete:
+Two post-phase maintenance capabilities are also materially advanced:
 
-1. PR #60 / MEM-36 — Context Packet v1 and measurable token accounting;
-2. PR #62 / MEM-37 — progressive repository map → file → symbol → fragment retrieval;
-3. PR #64 / MEM-38 — persistent commit-scoped symbol provenance/evolution;
-4. PR #66 / MEM-39 — deterministic context-quality and adversarial provenance regression gates.
+- **automatic continuation — complete:** PR #71 / Quality #290 adds repository-bound project resolution plus Continuation Contract v1 shared by normal close, cross-interface handoff and idle expiry;
+- **deterministic storage pagination — in review:** PR #73 / MEM-30 adds bounded keyset pagination to SQLite, local MCP history reads and Dashboard drill-down, with a 10,000-record cross-platform regression gate.
 
-PR #68 / MEM-40 is the active fifth milestone: **bounded operational project map and risk-oriented Galaxy**. The implementation composes the existing persisted project/Git/symbol evidence into owner-scoped read-only summaries and project impact graphs, exposes them through localhost-only endpoints, adds operational risk/verification filters to Galaxy, and gates graph size, isolation, redaction and performance in cross-platform CI.
+External release publication remains separately blocked on the user-side PyPI Trusted Publishing configuration before MCP Registry publication can proceed.
 
 ## Current capability matrix
 
 | Capability | Status | Evidence | Remaining gap |
 |---|---|---|---|
-| Product CLI and local onboarding | Complete foundation | `init`, `doctor`, `status`, `health`, `serve` | Ongoing UX refinement |
-| SQLite local-first storage | Complete | WAL, foreign keys, versioned migrations | Future numbered migrations as schema evolves |
-| Verified backup + manifests | Complete foundation | backup API, integrity check, SHA-256 sidecars | Optional rotation/signing refinements |
-| Health + maintenance readiness | Complete foundation | read-only checks and verified-backup awareness | Additional UI presentation only |
-| Confirmed restore | Complete foundation | two-phase plan/execute, safety backup, rollback | Additional UI integration only |
-| Installed upgrade lifecycle | Complete | v0.2.0 → current schema package regression | Future release migrations |
+| SQLite local-first storage | Complete foundation | WAL, foreign keys, schema v2, backup-first migrations | Future numbered migrations as schema evolves |
+| Backup / manifest / health / restore | Complete foundation | PR #29/#35/#39/#43 | Optional rotation/signing/UI refinements |
+| Installed upgrade lifecycle | Complete | v0.2.0 → current package regression | Future release migrations |
 | Runtime Settings | Complete foundation | validated SQLite-first configuration | Specialized provider settings remain incremental |
-| Context Packet v1 | Complete | PR #60 / Quality #226 | Extend only when later evidence types require it |
-| Progressive repository retrieval | Complete | PR #62 / Quality #235 | Ranking improvements must stay behind quality gates |
-| Persistent symbol evolution | Complete | PR #64 / Quality #250 | Richer language relationships later |
-| Context quality regression gates | Complete | PR #66 / Quality #262 | Thresholds may tighten with better ranking |
-| Operational map read model | **In review** | PR #68 / MEM-40 | Exact final-head gate + merge |
-| Risk-oriented operational Galaxy | **In review** | PR #68 / MEM-40 | Exact final-head gate + merge |
-| Automatic continuation | Partial | sessions/checkpoints/handoff | Project resolution + automatic milestone capture |
-| Hybrid search/embeddings | Complete foundation | semantic + lexical fallback | Broader quality/cost benchmarks |
-| Teams / remote collaboration | Out of scope | explicit product decision | No implementation planned |
+| Context Packet + token accounting | Complete | PR #60 / Quality #226 | Extend only as evidence contracts evolve |
+| Progressive repository retrieval | Complete | PR #62 / Quality #235 | Ranking changes remain behind quality gates |
+| Persistent symbol provenance/evolution | Complete | PR #64 / Quality #250 | Richer language relationships later |
+| Context quality/adversarial gates | Complete | PR #66 / Quality #262 | Thresholds can tighten, not silently regress |
+| Operational project map / Galaxy | Complete | PR #68 / Quality #282 | Additional UX refinement only |
+| Automatic Continuation Contract | Complete | PR #71 / Quality #290 | Future richer checkpoint fields only when justified |
+| Deterministic keyset pagination | **In review** | PR #73 / MEM-30 | Final exact-head cross-platform gate + merge |
+| Hybrid search / embeddings | Complete foundation | semantic + lexical local fallback | Broader quality/cost benchmark corpus |
+| Dashboard | Partial/advancing | PR #68 + PR #73 | Maintenance cards, explicit loading/empty/error UX |
+| Application container / Tool Registry | Planned | MEM-29 | Reduce runtime wrapper/registration coupling |
+| PyPI + MCP Registry publication | Externally blocked | MEM-33 / Issue #53 | Configure PyPI Trusted Publishing, publish, then registry |
+| Teams / public collaboration | Out of scope | explicit product decision | no implementation planned |
 
-## Context Compiler milestones 1–4 — complete
+## Completed post-v0.3 Context Compiler phase
 
-### Context Packet v1
+1. ✅ **Context Packet + model-aware token accounting** — PR #60 / Quality #226.
+2. ✅ **Progressive repository retrieval** — PR #62 / Quality #235.
+3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / Quality #250.
+4. ✅ **Context-quality regression guardrails** — PR #66 / Quality #262.
+5. ✅ **Operational project map / risk-oriented Galaxy** — PR #68 / Quality #282.
 
-PR #60 established:
+The phase tracker is closed. No sixth numbered phase item is implied by this document.
 
-- versioned packet contract;
-- objective and next-safe-action metadata;
-- compact provenance/verification state;
-- hard final serialized token budget;
-- tokenizer/model identity;
-- selected/dropped/compressed/token-cost metrics.
+## Automatic Continuation Contract — complete
 
-Quality #226 passed Ubuntu/Windows/macOS and Python 3.11–3.13.
+PR #71 / MEM-31 completed the lifecycle gap that remained after the original session foundation.
 
-### Progressive repository retrieval
+Continuation Contract v1 stores a bounded/redacted snapshot inside the checkpoint already created by `end_session`:
 
-PR #62 established bounded local retrieval:
+- objective;
+- completed and pending work;
+- blockers;
+- relevant files;
+- tests/validation;
+- next safe action;
+- Git branch/commit/dirty state;
+- credential-free canonical remote identity and a bounded local-root fingerprint.
 
-1. repository map;
-2. candidate files;
-3. symbols only from bounded candidates;
-4. bounded graph neighbors;
-5. exact source fragments.
+Project resolution checks owner-scoped repository remote/root bindings before historical slug fallback. Ambiguous strongest matches fail closed. Runtime ordering installs the continuation wrapper before Session Lifecycle, so explicit close, interface handoff and idle expiry use the same contract. `resume_project` preserves historical fields and adds the versioned continuation payload.
 
-Reference evaluation maps 80 supported files, parses 6 candidates (**7.5%**), returns 2 fragments / 284 bytes and fits **1,305 / 1,400** tokens.
+See [CONTINUATION.md](CONTINUATION.md). Quality #290 passed Ubuntu/Windows/macOS, Python 3.11–3.13, all reference evaluators, dependency audit and release-artifact upgrade checks on the exact final PR #71 HEAD.
 
-### Persistent symbol provenance/evolution
+## Deterministic keyset pagination — PR #73 / MEM-30
 
-PR #64 advanced SQLite to schema v2 with snapshot runs, snapshots, changes and typed evidence links. Capture requires clean Git HEAD and is owner/project/repository scoped. Evidence can be `verified`, `stale`, `contradicted`, `missing_source` or `unverified` without deleting history.
+### Storage contract
 
-The reproducible evaluation covers Python, TypeScript, JavaScript and SQL and validated **1 renamed, 1 moved and 2 modified** symbols with logical rename identity preserved. Quality #250 passed the exact final HEAD.
+PR #73 adds `SQLiteStorage.select_page()` while preserving historical `select()` for compatibility.
 
-### Context-quality regression guardrails
+The new page contract provides:
 
-PR #66 / MEM-39 adds the versioned local golden corpus, explicit thresholds and adversarial gates. Initial v1 baseline:
+- default page size **50**, hard maximum **200**;
+- opaque versioned cursor;
+- query fingerprint bound to table, filters, order column and direction;
+- deterministic timestamp + `id` keyset boundary;
+- allow-listed/validated order and filter columns;
+- fail-closed malformed or cross-query cursors;
+- an internal first-page SQLite rowid anchor so records inserted after traversal starts do not enter that traversal.
 
-| Metric | Baseline | Gate |
-|---|---:|---:|
-| File recall@5 | **1.000** | ≥1.000 |
-| File precision@5 | **0.200** | ≥0.200 |
-| Symbol recall@8 | **1.000** | ≥1.000 |
-| Symbol precision@8 | **0.125** | ≥0.125 |
-| Token-fit rate | **1.000** | ≥1.000 |
-| Token savings | **0.7722** | ≥0.400 |
-| Provenance coverage | **1.000** | ≥1.000 |
-| Safety pass rate | **1.000** | ≥1.000 |
+Same-timestamp regressions exercise thousands of records to prove the `id` tie-break prevents duplicates/skips.
 
-Adversarial gates cover expired/untrusted memory, prompt injection, dirty cursor invalidation, rename identity continuity, contradicted evidence and dirty-Git stale evidence. Quality #262 passed the exact final HEAD and PR #66 is merged.
+### Product integrations
 
-## Operational project map / Galaxy — PR #68 / MEM-40
+Local SQLite MCP runtime:
 
-### Read model
+- `get_project_timeline(..., cursor=...)` keeps the historical response fields and adds page metadata;
+- `list_project_history_page(...)` pages timeline, sessions, checkpoints, tasks, warnings and decisions with owner/project scope.
 
-`persistent_memory_mcp.operational_map.OperationalMapService` provides two compact read-only projections:
+Dashboard:
 
-- `project_overview()` — bounded owner-scoped project list with active/blocked work, warnings, changed-symbol count, evidence state and risk;
-- `impact_graph(project_id)` — bounded project → repository → file → symbol → task/decision/evidence graph.
+- existing bounded multi-table snapshot remains the overview;
+- `/api/table-page` provides owner/project-scoped read-only drill-down using the same SQLite keyset primitive;
+- project ownership is validated before project-scoped reads;
+- ambiguous multi-owner state without configured owner fails closed;
+- Dashboard security headers remain intact.
 
-The service consumes existing SQLite and `code_symbol_*` evidence. It does not rescan or execute repository code.
+Remote backends retain their legacy non-cursor path; PR #73 does not pretend SQLite cursor semantics are already implemented for optional remote adapters.
 
-### Current-change semantics
+### Secret-redaction hardening
 
-`changed_only=true` is based only on the **latest persisted snapshot run for each repository**. The affected-area graph starts from changed files/symbols, keeps directly linked operational evidence and adds only the ancestor hierarchy needed to understand the change. It does not fan out from the project node into unrelated tasks.
+Pagination testing found a real safety gap: a payload such as `{"token": "secret-value"}` did not necessarily match provider-specific secret patterns. PR #73 extends recursive redaction so exact credential-bearing mapping keys redact otherwise-undetected scalar strings while preserving container shape and historical pattern labels. Existing redaction markers remain idempotent, and unrelated fields such as `token_count` remain visible.
 
-### Verification and risk
+### Reproducible pagination gate
 
-Persisted verification states:
+`scripts/evaluate_storage_pagination.py` is wired into Ubuntu/Windows/macOS reference CI. Fixture:
 
-- `verified`
-- `stale`
-- `contradicted`
-- `missing_source`
-- `unverified`
+- **10,000** active-owner/project tasks;
+- **200** foreign-owner tasks;
+- identical timestamps;
+- page size **200**;
+- a new matching record inserted after page 1.
 
-Operational risk projection:
+Required properties:
 
-- `critical`
-- `high`
-- `medium`
-- `low`
-- `none`
+- exactly 10,000 original records traversed;
+- zero duplicates/skips;
+- no foreign-owner data;
+- exactly 50 pages;
+- post-start insert excluded from the active traversal and visible to a fresh traversal;
+- total traversal ≤ **5,000 ms**;
+- every page ≤ **1,000 ms**.
 
-Contradicted evidence is critical; stale/missing-source evidence is high; unverified evidence is medium. Blocked tasks and active high/critical warnings raise operational risk.
+Initial Ubuntu evidence before final documentation synchronization: **692.30 ms total**, **19.77 ms max page**, **13.79 ms mean page**. These are hosted-CI regression observations, not production SLA claims. Current evidence does not justify a new pagination index/migration.
 
-### Payload/privacy contract
-
-Operational payloads are bounded and body-free. They omit full:
-
-- source bodies/signatures;
-- task/decision details;
-- warning/session/checkpoint bodies;
-- absolute repository roots.
-
-Short display labels are bounded and pass through the existing secret redaction function. Cross-owner project access fails closed.
-
-Hard `OperationalMapLimits` maxima:
-
-| Limit | Default | Maximum |
-|---|---:|---:|
-| Projects | 50 | 100 |
-| Repositories | 12 | 20 |
-| Nodes | 250 | 500 |
-| Edges | 750 | 1,500 |
-| Records per kind | 50 | 200 |
-
-### Owner-scoped localhost HTTP surface
-
-Owner resolution:
-
-1. configured `--owner-id` / `OWNER_ID` wins;
-2. otherwise infer only if exactly one project owner exists;
-3. zero or multiple owners fail closed instead of mixing data.
-
-New endpoints:
-
-```text
-GET /api/operational/projects
-GET /api/operational/graph?project_id=<id>
-GET /api/operational/export.json?project_id=<id>
-GET /galaxy/operational?project_id=<id>
-```
-
-Filters include `verification`, `risk` and project-scoped `changed_only`. Existing legacy Dashboard/Galaxy endpoints remain compatible. The server remains loopback-only and read-only with no-store, `nosniff`, frame-deny and CSP headers.
-
-### Risk-oriented Galaxy
-
-Operational mode adds:
-
-- risk filter;
-- verification filter;
-- changed-only filter;
-- visible critical/high/medium, stale and contradicted states;
-- changed/missing/risk/verification summary counts;
-- separate operational SVG/PNG exports;
-- the existing drag, zoom, focus, minimap and ARIA/keyboard interactions.
-
-The same renderer detects legacy knowledge graphs and hides operational controls for compatibility.
-
-### Performance and bounds regression
-
-`scripts/evaluate_operational_map.py` builds a deterministic local fixture:
-
-- 20 active-owner projects plus a foreign-owner project;
-- 120 symbols;
-- 12 files;
-- 20 tasks;
-- 24 currently changed symbols concentrated in a bounded affected area.
-
-CI fixture limits: 20 projects, 180 nodes, 400 edges, 50 records per kind. Latency guardrail: **≤5,000 ms** for overview/full/changed graphs to avoid hosted-runner flakiness while still catching pathological growth.
-
-Validated structure:
-
-| Metric | Result |
-|---|---:|
-| Overview projects | **20** |
-| Full graph nodes | **154** |
-| Full graph edges | **173** |
-| Changed-area nodes | **55** |
-| Changed-area edges | **74** |
-
-Reference observations:
-
-| Platform | Overview | Full graph | Changed-area graph |
-|---|---:|---:|---:|
-| Ubuntu | **3.04 ms** | **6.26 ms** | **4.35 ms** |
-| Windows | **4.99 ms** | **8.08 ms** | **5.36 ms** |
-| macOS | **5.65 ms** | **8.56 ms** | **4.15 ms** |
-
-These are regression-fixture observations, not an SLA. Every reference job also asserts owner isolation, bounds, read-only output, secret redaction, no absolute repo-root leakage, no full body fields and actual changed-area graph reduction.
-
-See [OPERATIONAL_MAP.md](OPERATIONAL_MAP.md) for the public contract.
+See [PAGINATION.md](PAGINATION.md) for the detailed contract.
 
 ## Local data-safety contracts
 
-### Backup/manifest
-
-- live SQLite backups use SQLite's backup API;
-- completed backups pass integrity validation;
-- sidecar manifests carry SHA-256 and bounded structural metadata, not memory contents.
-
-### Health
-
-- read-only `quick_check` plus optional full integrity check;
-- foreign-key/index checks;
-- DB/WAL/SHM size and free-disk reporting;
-- latest verified-backup awareness.
-
-### Restore
-
-- read-only plan;
-- exact-plan-bound short-lived confirmation;
-- fresh verified safety backup;
-- atomic replacement;
-- post-validation and automatic rollback on failure.
-
-### Migration
-
-- read-only preview;
-- migration checksum history;
-- verified pre-migration backup;
-- transaction per migration;
-- explicit apply;
-- no silent startup automigration;
-- installed historical-upgrade regression across supported operating systems.
+- **backup:** live SQLite uses SQLite's backup API and verifies integrity;
+- **manifest:** SHA-256 sidecars contain bounded structural metadata, not memory contents;
+- **health:** read-only integrity/foreign-key/index/disk checks;
+- **restore:** preview → exact confirmation → fresh verified safety backup → atomic replacement → post-validation/rollback;
+- **migration:** preview → checksum verification → verified backup → transactional explicit apply;
+- **deletion:** exact scoped plan + short-lived confirmation;
+- **context/repository:** bounded, provenance-aware and non-executing by default.
 
 ## Product scope
 
-Persistent Memory MCP is designed around:
+Persistent Memory MCP is designed around one personal installation, SQLite by default, localhost-only operational UI, project/local-owner isolation and MCP-compatible local development clients. Optional self-managed remote adapters do not change the product direction.
 
-- one personal installation;
-- local SQLite by default;
-- localhost-only dashboard access;
-- project/local-owner isolation;
-- optional self-managed remote storage adapters without changing the core product direction.
+Not planned: workspace invitations, team-role hierarchies, billing/organization administration, public collaborative dashboards or automatic execution of repository code from stored memory.
 
-Not planned:
+## Next engineering order
 
-- workspace invitations;
-- team memberships/role hierarchies;
-- public collaborative dashboards;
-- billing/organization administration;
-- automatic code execution from stored memory or repository retrieval.
-
-## Post-v0.3 completion sequence
-
-1. ✅ Context Packet + token accounting — PR #60 / MEM-36.
-2. ✅ Progressive repository retrieval — PR #62 / MEM-37.
-3. ✅ Persistent code provenance/symbol evolution — PR #64 / MEM-38.
-4. ✅ Context-quality regression guardrails — PR #66 / MEM-39 / Quality #262.
-5. 🟡 Operational project map / risk-oriented Galaxy — PR #68 / MEM-40 in review.
-
-## Definition of done for PR #68 / MEM-40
-
-- [x] owner-scoped bounded read model;
-- [x] current-change affected-area semantics;
-- [x] explicit risk and verification states;
-- [x] compact body-free/redacted payload contract;
-- [x] cross-owner isolation/fail-closed owner resolution;
-- [x] localhost-only operational endpoints and bounded JSON export;
-- [x] risk-oriented Galaxy with legacy compatibility;
-- [x] HTTP/security/UI/read-model tests;
-- [x] cross-platform bounds/latency evaluator wired to CI;
-- [x] public `OPERATIONAL_MAP.md` contract;
-- [ ] README, ROADMAP, IMPLEMENTATION_STATUS, `llms.txt` and Notion fully synchronized;
-- [ ] exact final PR #68 HEAD passes complete Ubuntu/Windows/macOS Quality and artifact validation;
-- [ ] PR #68 merged and MEM-40 marked complete.
-
-After MEM-40 closes, the current five-step post-v0.3 phase should be re-evaluated against its definition of done before any new numbered milestone is invented.
+1. Finish PR #73 / MEM-30 exact-head Quality and merge if green.
+2. Reconcile MEM-12 Dashboard against the pagination work; keep only remaining maintenance/UX gaps.
+3. Implement MEM-29 incrementally: `create_application(settings)` + explicit idempotent MCP Tool Registry, starting with Maintenance/Deletion instead of a rewrite.
+4. Reconcile MEM-17 distribution scope against the already-complete v0.3 release foundation.
+5. MEM-33/Issue #53 remains blocked on PyPI Trusted Publishing configuration, then MCP Registry publication.
