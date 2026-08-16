@@ -71,6 +71,8 @@ jobs:
         run: python scripts/evaluate_context_quality.py
       - name: Enforce adversarial provenance guardrails
         run: python scripts/evaluate_context_adversarial.py
+      - name: Enforce operational map bounds and latency
+        run: python scripts/evaluate_operational_map.py
 
   release-artifacts:
     name: Release artifacts · ${{ matrix.os }}
