@@ -14,7 +14,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [health, verification, sensitivity, paths]
+        check:
+          - health_status
+          - maintenance_ready
+          - quick_check
+          - database_size
+          - disk_free
+          - verification
+          - sensitivity_internal
+          - sensitivity_restricted
+          - sensitivity_exact
+          - paths
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
