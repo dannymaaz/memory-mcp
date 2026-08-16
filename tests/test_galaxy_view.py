@@ -29,6 +29,9 @@ def test_galaxy_renderer_exposes_navigation_controls() -> None:
     control_ids = {
         "search",
         "kind",
+        "risk",
+        "verification",
+        "changedOnly",
         "zoomIn",
         "zoomOut",
         "reset",
@@ -43,6 +46,46 @@ def test_galaxy_renderer_exposes_navigation_controls() -> None:
     assert 'role="img"' in rendered
     assert 'aria-label="Search nodes"' in rendered
     assert 'aria-label="Filter by type"' in rendered
+    assert "const mode='knowledge'" in rendered
+    assert "Knowledge Galaxy" in rendered
+
+
+def test_operational_galaxy_exposes_risk_verification_and_changed_filters() -> None:
+    rendered = render_galaxy_view(
+        {
+            "nodes": [
+                {
+                    "id": "symbol:s1",
+                    "kind": "symbol",
+                    "label": "finalize_order",
+                    "project_id": "p1",
+                    "risk": "critical",
+                    "verification_state": "contradicted",
+                    "changed": True,
+                    "contradicted": True,
+                    "stale": False,
+                }
+            ],
+            "edges": [],
+            "summary": {
+                "changed_nodes": 1,
+                "missing_evidence_nodes": 0,
+                "risk": {"critical": 1, "high": 0},
+                "verification": {"stale": 0, "contradicted": 1},
+            },
+        },
+        project_id="p1",
+    )
+    assert "Operational Galaxy" in rendered
+    assert "const mode='operational'" in rendered
+    assert 'aria-label="Filter by risk"' in rendered
+    assert 'aria-label="Filter by verification"' in rendered
+    assert 'id="changedOnly"' in rendered
+    assert 'data-risk' in rendered
+    assert 'data-verification' in rendered
+    assert "riskPalette" in rendered
+    assert "operational-galaxy.svg" in rendered
+    assert "operational-galaxy.png" in rendered
 
 
 def test_galaxy_renderer_includes_interactive_layout_features() -> None:
