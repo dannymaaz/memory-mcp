@@ -10,6 +10,7 @@
   <a href="#context-packet-and-token-budgets">Context Packet</a> ·
   <a href="#progressive-repository-retrieval">Repository retrieval</a> ·
   <a href="#persistent-symbol-provenance-and-evolution">Symbol evolution</a> ·
+  <a href="#context-quality-regression-guardrails">Quality gates</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -40,6 +41,7 @@ The post-v0.3 direction goes beyond storing memory. Persistent Memory MCP is evo
 | **Context Packet v1** | Deliver versioned, provenance-aware context under a hard token budget |
 | **Progressive repository retrieval** | Expand map → files → symbols → exact fragments instead of loading whole repositories |
 | **Persistent symbol evolution** | Preserve logical symbol identity across commits, moves and safe rename matches with typed evidence |
+| **Context quality regression gates** | Block retrieval, token-budget or provenance/safety regressions with deterministic local CI |
 | Verified local backup | Create WAL-safe SQLite backups with integrity validation |
 | SHA-256 manifests | Detect changed or tampered backup files without exposing memory contents |
 | Health diagnostics | Inspect SQLite integrity and maintenance readiness without mutation |
@@ -251,7 +253,60 @@ The reference evaluation asserts all of the following:
 | Modification classified | **≥ 1** |
 | Current renamed symbol state | **verified** |
 
-The first validated Linux run classified **1 renamed, 1 moved and 2 modified** symbols while preserving the renamed Python symbol's `logical_id`. The same evaluation is part of the cross-platform CI reference job so the final PR gate requires it on Ubuntu, Windows and macOS.
+The validated delivery classified **1 renamed, 1 moved and 2 modified** symbols while preserving the renamed Python symbol's `logical_id`. Quality #250 passed the exact PR #64 HEAD across Ubuntu, Windows and macOS, Python 3.11–3.13, release-artifact upgrade and dependency audit. PR #64 / MEM-38 are complete.
+
+## Context quality regression guardrails
+
+PR #66 / MEM-39 adds the fourth mandatory Context Compiler layer: deterministic local gates for retrieval quality, hard budget behavior and evidence safety.
+
+The quality suite uses a versioned, non-sensitive coding-task corpus and the **real** `ProgressiveRepositoryRetriever` path. Every evaluation records fixture/evaluator/threshold version, tokenizer identity and model identity when applicable.
+
+Metrics include:
+
+- file recall@5 and precision@5;
+- symbol recall@8 and precision@8;
+- hard token-fit rate;
+- token savings against a deterministic supported-repository baseline;
+- provenance coverage for expected evidence;
+- maximum task latency;
+- hard safety pass rate.
+
+Initial deterministic v1 baseline and gates:
+
+| Metric | Observed baseline | CI gate |
+|---|---:|---:|
+| File recall@5 | **1.000** | ≥ **1.000** |
+| File precision@5 | **0.200** | ≥ **0.200** |
+| Symbol recall@8 | **1.000** | ≥ **1.000** |
+| Symbol precision@8 | **0.125** | ≥ **0.125** |
+| Token-fit rate | **1.000** | ≥ **1.000** |
+| Token savings | **0.7722** | ≥ **0.400** |
+| Provenance coverage | **1.000** | ≥ **1.000** |
+| Safety pass rate | **1.000** | ≥ **1.000** |
+| Maximum task latency | **~149 ms** on first reference run | ≤ **20,000 ms** |
+
+The initial precision floors protect the current baseline; they are not claims that ranking is already optimal. Retrieval improvements may raise them, but recall, hard budget, provenance and safety cannot regress silently.
+
+Hard adversarial gates require all of the following:
+
+- expired memory is excluded;
+- prompt-injection/untrusted memory is excluded by default;
+- relevant dirty repository changes invalidate stale retrieval cursors;
+- a uniquely supported rename preserves logical symbol identity and is classified as a rename;
+- contradicted evidence remains retained and visibly contradicted;
+- dirty Git state marks previously current symbol evidence `stale`.
+
+Unit tests also deliberately degrade recall, token fit, savings, provenance, safety and latency and require threshold evaluation to fail. The reference Quality jobs run the quality evaluator and adversarial evaluator on Ubuntu, Windows and macOS.
+
+To reproduce locally from a development checkout:
+
+```bash
+pip install -e ".[tokenizers]"
+python scripts/evaluate_context_quality.py
+python scripts/evaluate_context_adversarial.py
+```
+
+See [docs/CONTEXT_QUALITY.md](docs/CONTEXT_QUALITY.md) for the public evaluation contract, thresholds and interpretation.
 
 ## Upgrading from 0.2.0
 
@@ -308,7 +363,7 @@ MCP client C ─────┘                                      │
                                                                   └─ bounded agent context
 ```
 
-The server resolves project context, retrieves structured memory/evidence, rejects expired or unsafe records, ranks what matters for the current intent, progressively expands repository evidence only as needed and compiles the result under a hard budget. Persisted symbol snapshots let later sessions distinguish verified current source from historical, contradicted or missing evidence.
+The server resolves project context, retrieves structured memory/evidence, rejects expired or unsafe records, ranks what matters for the current intent, progressively expands repository evidence only as needed and compiles the result under a hard budget. Persisted symbol snapshots let later sessions distinguish verified current source from historical, contradicted or missing evidence. CI quality gates protect the measured retrieval, token-budget and provenance behavior from silent regressions.
 
 ## Main MCP tools
 
@@ -349,6 +404,7 @@ Persistent Memory MCP uses explicit, fail-closed maintenance and context contrac
 - deletion/retention uses exact plan fingerprints and short-lived confirmation;
 - repository retrieval is local/read-only, root-contained, ignored-path aware and fragment-bounded;
 - persistent symbol capture requires a clean HEAD, stores hashes/bounded metadata instead of source bodies and refuses speculative ambiguous rename matches;
+- Context Compiler quality gates require full token fit/provenance/safety and explicitly fail on stale/poisoned evidence scenarios;
 - context-managed SQLite handles close deterministically after commit/rollback semantics.
 
 ## Privacy and product scope
@@ -358,6 +414,7 @@ Persistent Memory MCP uses explicit, fail-closed maintenance and context contrac
 - Reads/writes are scoped by project and local owner identity.
 - Sensitive values are redacted before persistence and recognized secrets are redacted from emitted repository fragments.
 - Context compilation, repository retrieval and symbol-history capture do not execute repository code.
+- Quality evaluation uses synthetic non-sensitive fixtures and no remote telemetry/provider calls.
 - Optional exact token measurement runs locally; the fallback is provider-free.
 - Team memberships, shared roles, billing and public collaborative dashboards are out of scope.
 
@@ -367,9 +424,9 @@ The mandatory post-v0.3 order is:
 
 1. ✅ **Context Packet + model-aware token accounting** — PR #60 / MEM-36 complete.
 2. ✅ **Progressive repository retrieval** — PR #62 / MEM-37 complete.
-3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / MEM-38 implementation and regression gate in this delivery.
-4. **Context-quality regression guardrails** with measurable golden scenarios.
-5. **Operational project map / Galaxy** built on verified retrieval/provenance data.
+3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / MEM-38 complete; Quality #250 green.
+4. 🟡 **Context-quality regression guardrails** — PR #66 / MEM-39 in review with deterministic thresholds and adversarial gates.
+5. **Operational project map / Galaxy** built on verified retrieval/provenance/quality data.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria, sequencing rules and current evidence.
 
@@ -377,6 +434,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria, sequencing rules
 
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Delivery roadmap](docs/ROADMAP.md)
+- [Context Compiler quality evaluation](docs/CONTEXT_QUALITY.md)
 - [Changelog](CHANGELOG.md)
 - [Upgrade and rollback](docs/UPGRADING.md)
 - [Release operator checklist](docs/RELEASING.md)
