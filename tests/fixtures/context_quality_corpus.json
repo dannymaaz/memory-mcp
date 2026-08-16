@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "description": "Non-sensitive deterministic coding-task corpus for Context Compiler regression evaluation.",
+  "tasks": [
+    {
+      "id": "auth-token-validation",
+      "intent": "Find the code that validates bearer access tokens before changing authentication.",
+      "query": "validate_access_token bearer token authentication",
+      "expected_files": ["services/security.py"],
+      "expected_symbols": ["validate_access_token"]
+    },
+    {
+      "id": "invoice-total",
+      "intent": "Locate invoice total calculation before changing billing rounding.",
+      "query": "calculate_invoice_total invoice billing total",
+      "expected_files": ["billing/invoice.py"],
+      "expected_symbols": ["calculate_invoice_total"]
+    },
+    {
+      "id": "session-expiry",
+      "intent": "Locate session expiry logic before changing session lifetime.",
+      "query": "is_session_expired session expiry ttl",
+      "expected_files": ["sessions/lifecycle.py"],
+      "expected_symbols": ["is_session_expired"]
+    },
+    {
+      "id": "typescript-cart-discount",
+      "intent": "Find the TypeScript cart discount function before changing checkout promotions.",
+      "query": "applyCartDiscount cart discount checkout",
+      "expected_files": ["web/cart.ts"],
+      "expected_symbols": ["applyCartDiscount"]
+    }
+  ]
+}
