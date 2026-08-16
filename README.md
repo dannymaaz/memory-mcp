@@ -28,7 +28,7 @@ Persistent Memory MCP is an open-source Model Context Protocol server that gives
 
 The product is deliberately personal and local-first: one local installation, private SQLite by default, a localhost-only dashboard and project/owner isolation. Shared team workspaces, public remote dashboards and multi-user role models are outside the product scope.
 
-The post-v0.3 direction goes beyond storing memory. Persistent Memory MCP acts as a **Context Compiler**: stored memories and repository evidence are filtered, ranked, compressed, verified and packed under a measurable token budget before they are delivered to an agent. The operational map then projects the persisted evidence into a bounded risk-oriented view without loading full project content.
+The completed post-v0.3 Context Compiler phase goes beyond storing memory. Persistent Memory MCP filters, ranks, compresses and verifies stored memory and repository evidence under measurable token budgets, tracks code evolution with persisted provenance, protects quality with deterministic CI gates and projects the resulting evidence into a bounded operational map.
 
 ## Core capabilities
 
@@ -254,7 +254,9 @@ See [docs/CONTEXT_QUALITY.md](docs/CONTEXT_QUALITY.md).
 
 ## Operational project map and risk-oriented Galaxy
 
-PR #68 / MEM-40 adds a bounded operational projection over the existing SQLite project state and persisted code-symbol evidence. It does **not** add another repository scanner or graph database.
+PR #68 / MEM-40 completed the fifth mandatory post-v0.3 milestone. Quality #282 passed the exact final implementation/documentation HEAD across Ubuntu, Windows and macOS before PR #68 was merged.
+
+The operational map is a bounded projection over the existing SQLite project state and persisted code-symbol evidence. It does **not** add another repository scanner or graph database.
 
 `OperationalMapService` provides:
 
@@ -277,7 +279,7 @@ Operational owner resolution fails closed:
 2. without configuration, infer only when exactly one project owner exists;
 3. zero or multiple owners are rejected instead of mixed.
 
-New read-only localhost endpoints:
+Read-only localhost endpoints:
 
 ```text
 GET /api/operational/projects
@@ -288,7 +290,7 @@ GET /galaxy/operational?project_id=<id>
 
 Project graphs support `verification`, `risk` and `changed_only` filters. Existing Dashboard/Galaxy endpoints remain compatible.
 
-Operational payloads are deliberately compact: no full source/signature bodies, decision/task details, session/checkpoint bodies or absolute repository roots. Short display labels pass through the existing secret-redaction logic.
+Operational payloads are deliberately compact: no full source/signature bodies, decision/task details, session/checkpoint bodies or absolute repository roots. Short display labels pass through existing secret redaction.
 
 ### Risk-oriented Galaxy
 
@@ -304,7 +306,7 @@ Operational Galaxy reuses the dependency-free renderer and adds:
 
 ### Reproducible bounds and latency gate
 
-`scripts/evaluate_operational_map.py` is wired into the Ubuntu/Windows/macOS reference CI jobs. Its local non-sensitive fixture contains 20 active-owner projects plus one foreign-owner project, 120 symbols across 12 files and 20 tasks.
+`scripts/evaluate_operational_map.py` runs in Ubuntu/Windows/macOS reference CI. Its non-sensitive fixture contains 20 active-owner projects plus one foreign-owner project, 120 symbols across 12 files and 20 tasks.
 
 Structural output:
 
@@ -445,15 +447,15 @@ Persistent Memory MCP uses explicit fail-closed contracts:
 
 ## Roadmap
 
-The mandatory post-v0.3 sequence is:
+The mandatory post-v0.3 Context Compiler phase is complete:
 
 1. ✅ **Context Packet + model-aware token accounting** — PR #60 / MEM-36 / Quality #226.
 2. ✅ **Progressive repository retrieval** — PR #62 / MEM-37 / Quality #235.
 3. ✅ **Persistent code provenance and symbol evolution** — PR #64 / MEM-38 / Quality #250.
 4. ✅ **Context-quality regression guardrails** — PR #66 / MEM-39 / Quality #262.
-5. 🟡 **Operational project map / risk-oriented Galaxy** — PR #68 / MEM-40 in review.
+5. ✅ **Operational project map / risk-oriented Galaxy** — PR #68 / MEM-40 / Quality #282.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria, sequencing and current evidence.
+Future numbered work should begin only after an explicit new roadmap decision rather than silently extending this completed phase. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Documentation
 
