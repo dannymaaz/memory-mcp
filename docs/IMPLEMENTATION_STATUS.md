@@ -1,6 +1,6 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for PR #77 / MEM-12 during its final review. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled after PR #77 / MEM-12 merged with Quality #338. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
@@ -10,7 +10,7 @@ Post-phase reliability work now also includes:
 
 - **automatic continuation — complete:** PR #71 / Quality #290 adds repository-bound project resolution plus Continuation Contract v1 shared by normal close, cross-interface handoff and idle expiry;
 - **deterministic storage pagination — complete:** PR #73 / MEM-30 adds bounded keyset pagination to SQLite, local MCP history reads and Dashboard drill-down;
-- **Dashboard maintenance/UX — in final review:** PR #77 / MEM-12 adds bounded health/storage/backup/verification/sensitivity status plus safe local backup, signed restore preview/confirm and signed selective-deletion preview/confirm flows.
+- **Dashboard maintenance/UX — complete:** PR #77 / MEM-12 adds bounded health/storage/backup/verification/sensitivity status plus safe local backup, signed restore preview/confirm and signed selective-deletion preview/confirm flows. Quality #338 passed before merge `43790fd…`.
 
 External release publication remains separately blocked on user-side PyPI Trusted Publishing configuration before MCP Registry publication can proceed.
 
@@ -30,7 +30,7 @@ External release publication remains separately blocked on user-side PyPI Truste
 | Automatic Continuation Contract | Complete | PR #71 / Quality #290 | Future richer checkpoint fields only when justified |
 | Deterministic keyset pagination | Complete | PR #73 / MEM-30 / Quality #306 | Optional remote-adapter parity only if later required |
 | Hybrid search / embeddings | Complete foundation | semantic + lexical local fallback | Broader quality/cost benchmark corpus |
-| Dashboard maintenance/UX | **In final review** | PR #77 / Issue #76 / MEM-12 | Exact final documentation-head Quality + merge |
+| Dashboard maintenance/UX | **Complete** | PR #77 / Issue #76 / MEM-12 / Quality #338 | Future optional UX polish only |
 | Application container / Tool Registry | Planned | MEM-29 / Issue #75 | Reduce runtime wrapper/registration coupling |
 | PyPI + MCP Registry publication | Externally blocked | MEM-33 / Issue #53 | Configure PyPI Trusted Publishing, publish, then registry |
 | Teams / public collaboration | Out of scope | explicit product decision | no implementation planned |
@@ -117,9 +117,9 @@ Quality #306 requires exactly 10,000 original records, zero duplicates/skips, no
 
 See [PAGINATION.md](PAGINATION.md) for the detailed contract.
 
-## Dashboard maintenance/UX — final review
+## Dashboard maintenance/UX — complete
 
-PR #77 / MEM-12 closes the remaining genuine Dashboard subset while preserving the local-only product boundary.
+PR #77 / MEM-12 closed the remaining genuine Dashboard subset while preserving the local-only product boundary. Quality #338 passed the exact final documentation HEAD across Ubuntu/Windows/macOS × Python 3.11–3.13, reference evaluators, dependency audit and release-artifact/upgrade checks before merge `43790fdfe9c003a9347496a34b0360d17c95320b`.
 
 ### Status and cards
 
@@ -137,7 +137,7 @@ The bounded snapshot and Galaxy remain read-only. PR #73 `/api/table-page` conti
 
 ### Safe maintenance actions
 
-The Dashboard now adapts the **existing** maintenance and retention services instead of introducing raw HTTP-handler mutations:
+The Dashboard adapts the **existing** maintenance and retention services instead of introducing raw HTTP-handler mutations:
 
 - verified backup uses a server-generated filename inside explicit `--backup-dir`;
 - restore uses signed `preview → confirm`, then the existing safety-backup/atomic-replace/post-validation/rollback contract;
@@ -169,7 +169,6 @@ Not planned: workspace invitations, team-role hierarchies, billing/organization 
 
 ## Next engineering order
 
-1. Complete the exact final-head Quality and merge **PR #77 / MEM-12**.
-2. Implement **MEM-29 / Issue #75** incrementally: `create_application(settings)` + explicit idempotent MCP Tool Registry, starting with Maintenance/Deletion instead of a rewrite.
-3. Reconcile **MEM-17 distribution scope** against the already-complete v0.3 release foundation.
-4. **MEM-33 / Issue #53** remains blocked on PyPI Trusted Publishing configuration, then MCP Registry publication.
+1. Implement **MEM-29 / Issue #75** incrementally: `create_application(settings)` + explicit idempotent MCP Tool Registry, starting with Maintenance/Deletion instead of a rewrite.
+2. Reconcile **MEM-17 distribution scope** against the already-complete v0.3 release foundation.
+3. **MEM-33 / Issue #53** remains blocked on PyPI Trusted Publishing configuration, then MCP Registry publication.

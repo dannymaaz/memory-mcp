@@ -98,14 +98,16 @@ Quality #306 verified exact traversal without duplicates/skips/foreign rows, sta
 
 See [PAGINATION.md](PAGINATION.md).
 
-### Dashboard operational completion — 🟡 In review
+### Dashboard operational completion — ✅ Complete
 
 **Notion:** MEM-12  
-**GitHub:** Issue #76 / PR #77
+**GitHub:** Issue #76 / PR #77  
+**Gate:** Quality #338  
+**Merge:** `43790fdfe9c003a9347496a34b0360d17c95320b`
 
-PR #77 closes the genuine Dashboard maintenance/UX subset without changing the local-first product boundary.
+PR #77 closed the genuine Dashboard maintenance/UX subset without changing the local-first product boundary.
 
-Delivered in the review branch:
+Delivered:
 
 - owner/project-scoped maintenance status built on `HealthService` rather than duplicated checks;
 - health, storage/free-disk, latest verified backup, persisted verification-risk and sensitivity cards;
@@ -118,7 +120,7 @@ Delivered in the review branch:
 - restrictive CSP with same-origin `connect-src` for the local UI;
 - no arbitrary filesystem paths, raw SQL or public/remote Dashboard behavior.
 
-The implementation Quality gate is green across the completed Ubuntu/macOS/Windows jobs observed so far; the item remains **in review** until the final documentation HEAD receives a complete exact-head Quality run and PR #77 is merged.
+Quality #338 passed the final documentation HEAD across Ubuntu/Windows/macOS × Python 3.11–3.13, reference evaluators, dependency audit and release-artifact/upgrade validation before PR #77 was merged. Issue #76 and Notion MEM-12 are closed/completed.
 
 See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 
@@ -174,7 +176,6 @@ A roadmap item is not complete until:
 
 ## Current recommended order
 
-1. Finish the exact-head review/merge of **PR #77 / MEM-12 Dashboard**.
-2. Implement **MEM-29 / Issue #75 Application container + Tool Registry** incrementally, beginning with Maintenance/Deletion registration coupling.
-3. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
-4. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.
+1. Implement **MEM-29 / Issue #75 Application container + Tool Registry** incrementally, beginning with Maintenance/Deletion registration coupling.
+2. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
+3. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.
