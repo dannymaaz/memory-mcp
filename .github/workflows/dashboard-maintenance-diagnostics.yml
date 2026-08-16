@@ -21,9 +21,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio
-      - name: Focused dashboard maintenance tests
-        run: >-
-          pytest -vv -x
-          tests/test_dashboard_status.py
-          tests/test_dashboard_maintenance_http.py
-          tests/test_dashboard_actions.py
+      - name: Dashboard status tests
+        run: pytest -q tests/test_dashboard_status.py
+      - name: Dashboard HTTP and UX tests
+        run: pytest -q tests/test_dashboard_maintenance_http.py
+      - name: Dashboard maintenance action tests
+        run: pytest -q tests/test_dashboard_actions.py
