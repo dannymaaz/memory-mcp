@@ -7,14 +7,14 @@ This document mirrors the canonical roadmap maintained in Notion.
 ## Status legend
 
 - ✅ **Complete** — implemented, integrated, documented and validated by the required gate.
-- 🟡 **In review** — implementation exists but the exact final-head gate/merge is still open.
+- 🟡 **In review** — repository work exists but a publication, final-head gate or external handoff remains.
 - ⬜ **Planned** — sequenced work not started yet.
-- ⛔ **Externally blocked** — repository work is ready but completion depends on an external user/account configuration.
+- ⛔ **Externally blocked** — repository work is ready but completion depends on external account configuration.
 - 🚫 **Out of scope** — intentionally excluded from the product direction.
 
 ## Delivered foundation
 
-### Data safety / recovery — ✅
+### Data safety / recovery — ✅ Complete
 
 - SQLite WAL + foreign keys;
 - owner/project isolation and secret redaction;
@@ -25,7 +25,7 @@ This document mirrors the canonical roadmap maintained in Notion.
 - explicit upgrade CLI and fail-closed stale-schema startup;
 - deterministic SQLite connection lifecycle.
 
-### Packaging / upgrade safety — ✅
+### Packaging / upgrade safety — ✅ Complete
 
 - SQLite-first core with optional Supabase/PostgreSQL extras;
 - immutable validated Settings foundation;
@@ -42,25 +42,17 @@ This document mirrors the canonical roadmap maintained in Notion.
 4. **Context-quality/adversarial regression gates** — PR #66 / MEM-39 / Quality #262.
 5. **Operational project map / risk-oriented Galaxy** — PR #68 / MEM-40 / Quality #282.
 
-The umbrella tracker for this five-step phase is closed. No additional numbered Context Compiler milestone should be inferred without a new roadmap decision.
+The five-step phase tracker is closed. No sixth numbered Context Compiler milestone is implied without a new roadmap decision.
 
-## Post-phase reliability / architecture work
+## Post-phase reliability / architecture
 
 ### Automatic Continuation Contract — ✅ Complete
 
-**Notion:** MEM-31 + completion of remaining MEM-6 gap  
+**Notion:** MEM-31 + remaining MEM-6 lifecycle gap  
 **GitHub:** Issue #70 / PR #71  
 **Gate:** Quality #290
 
-Delivered:
-
-- owner-scoped repository binding by canonical remote/local root before slug creation;
-- ambiguous strongest binding fails closed;
-- versioned bounded/redacted Continuation Contract inside the existing session-close checkpoint;
-- objective, completed/pending work, blockers, files, tests, next action and Git state;
-- credential-free canonical remote plus bounded root fingerprint rather than absolute path in continuation output;
-- one shared continuation path for explicit close, cross-interface handoff and idle expiry;
-- backward-compatible `resume_project` extension.
+Delivered repository-bound project resolution, Continuation Contract v1, one shared continuation path for explicit close/handoff/idle expiry, bounded/redacted state, Git identity without credentials and backward-compatible resume behavior.
 
 See [CONTINUATION.md](CONTINUATION.md).
 
@@ -68,33 +60,9 @@ See [CONTINUATION.md](CONTINUATION.md).
 
 **Notion:** MEM-30  
 **GitHub:** Issue #72 / PR #73  
-**Gate:** Quality #306 on the final functional/documented implementation before state-only reconciliation.
+**Gate:** Quality #306
 
-PR #73 replaces new high-volume all-row/offset-style reads with a stable bounded SQLite keyset contract while keeping historical `select()` compatibility.
-
-Delivered:
-
-- `StoragePage` with default 50 / hard max 200;
-- opaque versioned cursor;
-- fingerprint bound to table, filters, order and direction;
-- deterministic timestamp + `id` boundary;
-- first-page rowid anchor that freezes traversal against later inserts;
-- malformed/cross-query cursors fail closed;
-- order/filter identifiers validated against allow lists/schema;
-- MCP history pagination for timeline, sessions, checkpoints, tasks, warnings and decisions;
-- localhost Dashboard `/api/table-page` drill-down using the same storage primitive;
-- owner/project isolation and multi-owner fail-closed behavior;
-- recursive sensitive-field redaction hardening discovered through pagination regressions;
-- cross-platform 10,000-record pagination evaluation wired to reference CI.
-
-Regression fixture:
-
-- 10,000 active-owner records + 200 foreign-owner records;
-- all focus rows share the same timestamp;
-- 50 pages of 200;
-- one new matching row inserted after page 1.
-
-Quality #306 verified exact traversal without duplicates/skips/foreign rows, stable snapshot semantics, the complete Python 3.11–3.13 × Ubuntu/Windows/macOS matrix, reference evaluators, dependency audit and wheel/sdist upgrade checks. Observed pagination traversal remained far below the 5,000 ms total / 1,000 ms per-page guardrails; current evidence does not justify a new index/migration.
+Delivered bounded SQLite keyset pagination with default 50 / hard max 200, opaque versioned cursors, query fingerprints, stable timestamp + `id` boundaries, first-page rowid snapshot anchoring, owner/project isolation, fail-closed malformed cursors, MCP history paging and Dashboard drill-down. The 10,000-record cross-platform evaluator remains part of reference CI.
 
 See [PAGINATION.md](PAGINATION.md).
 
@@ -105,50 +73,72 @@ See [PAGINATION.md](PAGINATION.md).
 **Gate:** Quality #338  
 **Merge:** `43790fdfe9c003a9347496a34b0360d17c95320b`
 
-PR #77 closed the genuine Dashboard maintenance/UX subset without changing the local-first product boundary.
-
-Delivered:
-
-- owner/project-scoped maintenance status built on `HealthService` rather than duplicated checks;
-- health, storage/free-disk, latest verified backup, persisted verification-risk and sensitivity cards;
-- explicit empty/error/loading states;
-- existing bounded snapshot plus PR #73 keyset drill-down;
-- safe localhost backup action with server-generated destination inside explicit `--backup-dir`;
-- restore as signed `preview → confirm`, delegating to the existing verified restore/safety-backup/rollback service;
-- selective deletion as signed `preview → confirm`, at most 100 explicit IDs, sharing the consumed confirmation state with the MCP deletion interface;
-- JSON-only POST surface, 64 KiB request cap and explicit `X-Memory-MCP-Action: 1` header;
-- restrictive CSP with same-origin `connect-src` for the local UI;
-- no arbitrary filesystem paths, raw SQL or public/remote Dashboard behavior.
-
-Quality #338 passed the final documentation HEAD across Ubuntu/Windows/macOS × Python 3.11–3.13, reference evaluators, dependency audit and release-artifact/upgrade validation before PR #77 was merged. Issue #76 and Notion MEM-12 are closed/completed.
+Delivered bounded owner/project-scoped maintenance status, safe localhost backup, signed restore preview/confirm, signed selective-deletion preview/confirm, explicit empty/error/loading states and hardened mutable HTTP routes while preserving the localhost-only product boundary.
 
 See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 
-### Application container + MCP Tool Registry — ⬜ Planned
+### Application container + MCP Tool Registry — ✅ Complete
 
 **Notion:** MEM-29  
-**GitHub:** Issue #75
+**GitHub:** Issue #75 / PR #80  
+**Gate:** Quality #346  
+**Merge:** `f85b4d691ce1716b20ad7a49a02ca62227d03614`
 
-Goal: reduce accumulated runtime ordering/monkey-patching coupling incrementally, not rewrite the server.
+PR #80 completed the first incremental architecture slice without rewriting the legacy server or changing public MCP contracts.
 
-Acceptance direction:
+Delivered:
 
-- `create_application(settings)` composition root;
-- explicit idempotent Tool Registry;
-- initialization order documented and tested;
-- start by moving Maintenance/Deletion off dynamic wrappers;
-- preserve public tool contracts and current local-first behavior.
+- `create_application(settings)` as the explicit runtime composition root;
+- one shared idempotent `ToolRegistry` for dynamic MCP registration/replacement;
+- deterministic initialization order exposed and covered by regression tests;
+- Confirmed Deletion and Verified Restore/Maintenance migrated away from duplicated FastMCP registry mutation helpers;
+- repeated construction/registration guarded against duplicate tools;
+- registration failures made explicit instead of silently dropping required tools;
+- current local-first scope, storage schema, destructive confirmation semantics and public tool names/signatures preserved.
 
-### Distribution / publication — mixed
+Quality #346 passed Ubuntu/Windows/macOS × Python 3.11–3.13, lint/tests, agent regressions, token accounting, release-artifact/upgrade validation and dependency audit before merge.
+
+See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
+
+## Distribution / publication — 🟡 In review
 
 **Notion:** MEM-17 + MEM-33  
 **GitHub:** Issue #53
 
-Already complete: package build, release artifacts, checksums, clean installs, upgrade regressions, GitHub release foundation and recovery documentation.
+The **v0.3.0 release candidate preparation is complete**, but publication itself is not complete.
 
-**Externally blocked:** PyPI Trusted Publishing must be configured for the repository/account. After PyPI publication is public, MCP Registry publication can proceed. Do not treat this external dependency as unfinished application code.
+Verified repository state on 2026-08-16:
+
+- package metadata is `0.3.0`;
+- release preparation PR #54 is merged;
+- the validated release merge commit is `4dc160c1fdf0e2858337239c42c9085fe8097493`;
+- that release commit contains the tag-triggered `Release artifacts` workflow;
+- the final PR #54 head passed Quality #209;
+- upgrade/rollback/release documentation and checksum tooling are present;
+- **no `v0.3.0` tag currently exists in GitHub**;
+- **no GitHub Release currently exists**;
+- **no PyPI Trusted Publishing workflow currently exists in `main`**.
+
+Required controlled sequence:
+
+1. create `v0.3.0` from the validated release commit `4dc160c…`, not from current post-v0.3 `main`;
+2. require the tag workflow to build and validate wheel/sdist/`SHA256SUMS` successfully;
+3. create the GitHub Release from that exact bundle;
+4. add and validate a PyPI Trusted Publishing path that publishes those exact artifacts rather than rebuilding them;
+5. configure the repository/account Trusted Publisher in PyPI;
+6. publish and smoke-test `persistent-memory-mcp==0.3.0` from PyPI;
+7. submit the stable package/release metadata to MCP Registry;
+8. synchronize final publication evidence in GitHub docs and Notion.
+
+The PyPI account trust relationship is an external dependency, but the missing tag/GitHub Release and missing publication workflow are repository/release tasks and must not be mislabeled as already complete.
 
 MEM-17 still needs a product-scope decision separating optional Docker/deployment documentation from the local-first core.
+
+See [RELEASING.md](RELEASING.md) and [UPGRADING.md](UPGRADING.md).
+
+## Repository maintenance — ⬜ Planned cleanup
+
+PR #74 contains useful `SECURITY.md` and Dependabot configuration but is based on an obsolete branch and is conflictive. Do not merge it as-is. Recreate the security policy and weekly pip/GitHub Actions dependency automation from current `main`, validate them, then close the stale PR.
 
 ## Product scope decision — 🚫 No collaborative SaaS
 
@@ -176,6 +166,7 @@ A roadmap item is not complete until:
 
 ## Current recommended order
 
-1. Implement **MEM-29 / Issue #75 Application container + Tool Registry** incrementally, beginning with Maintenance/Deletion registration coupling.
-2. Reconcile **MEM-17 distribution scope** against already-delivered v0.3 release/recovery work.
-3. Complete **MEM-33 / Issue #53** only after PyPI Trusted Publishing is configured, then publish to MCP Registry.
+1. Finish **MEM-33 / Issue #53** from the exact validated v0.3.0 release commit: tag → artifact gate → GitHub Release → PyPI Trusted Publishing → public smoke test → MCP Registry.
+2. Recreate the useful **security policy + Dependabot** changes from stale PR #74 on current `main`, then retire the stale branch/PR.
+3. Reconcile **MEM-17 distribution scope**, keeping optional deployment/Docker documentation separate from the local-first core.
+4. Start no new numbered product phase until the release/distribution state and roadmap source of truth are coherent.
