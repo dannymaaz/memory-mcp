@@ -1,15 +1,15 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for PR #73 / MEM-30. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled for PR #73 / MEM-30 after Quality #306. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
 The v0.3 technical foundation and the complete five-step post-v0.3 Context Compiler phase are delivered. The product now has recoverable/versioned SQLite storage, hard context budgets, progressive repository retrieval, persistent code provenance, deterministic quality/adversarial CI gates and a bounded operational project map/Galaxy.
 
-Two post-phase maintenance capabilities are also materially advanced:
+Post-phase reliability work now also includes:
 
 - **automatic continuation — complete:** PR #71 / Quality #290 adds repository-bound project resolution plus Continuation Contract v1 shared by normal close, cross-interface handoff and idle expiry;
-- **deterministic storage pagination — in review:** PR #73 / MEM-30 adds bounded keyset pagination to SQLite, local MCP history reads and Dashboard drill-down, with a 10,000-record cross-platform regression gate.
+- **deterministic storage pagination — complete:** PR #73 / MEM-30 adds bounded keyset pagination to SQLite, local MCP history reads and Dashboard drill-down, validated by Quality #306 and a cross-platform 10,000-record regression gate.
 
 External release publication remains separately blocked on the user-side PyPI Trusted Publishing configuration before MCP Registry publication can proceed.
 
@@ -27,7 +27,7 @@ External release publication remains separately blocked on the user-side PyPI Tr
 | Context quality/adversarial gates | Complete | PR #66 / Quality #262 | Thresholds can tighten, not silently regress |
 | Operational project map / Galaxy | Complete | PR #68 / Quality #282 | Additional UX refinement only |
 | Automatic Continuation Contract | Complete | PR #71 / Quality #290 | Future richer checkpoint fields only when justified |
-| Deterministic keyset pagination | **In review** | PR #73 / MEM-30 | Final exact-head cross-platform gate + merge |
+| Deterministic keyset pagination | **Complete** | PR #73 / MEM-30 / Quality #306 | Optional remote-adapter pagination parity only if later required |
 | Hybrid search / embeddings | Complete foundation | semantic + lexical local fallback | Broader quality/cost benchmark corpus |
 | Dashboard | Partial/advancing | PR #68 + PR #73 | Maintenance cards, explicit loading/empty/error UX |
 | Application container / Tool Registry | Planned | MEM-29 | Reduce runtime wrapper/registration coupling |
@@ -63,13 +63,13 @@ Project resolution checks owner-scoped repository remote/root bindings before hi
 
 See [CONTINUATION.md](CONTINUATION.md). Quality #290 passed Ubuntu/Windows/macOS, Python 3.11–3.13, all reference evaluators, dependency audit and release-artifact upgrade checks on the exact final PR #71 HEAD.
 
-## Deterministic keyset pagination — PR #73 / MEM-30
+## Deterministic keyset pagination — complete
+
+PR #73 / MEM-30 adds `SQLiteStorage.select_page()` while preserving historical `select()` for compatibility.
 
 ### Storage contract
 
-PR #73 adds `SQLiteStorage.select_page()` while preserving historical `select()` for compatibility.
-
-The new page contract provides:
+The page contract provides:
 
 - default page size **50**, hard maximum **200**;
 - opaque versioned cursor;
@@ -104,25 +104,25 @@ Pagination testing found a real safety gap: a payload such as `{"token": "secret
 
 ### Reproducible pagination gate
 
-`scripts/evaluate_storage_pagination.py` is wired into Ubuntu/Windows/macOS reference CI. Fixture:
+`scripts/evaluate_storage_pagination.py` runs in Ubuntu/Windows/macOS reference CI against:
 
 - **10,000** active-owner/project tasks;
 - **200** foreign-owner tasks;
 - identical timestamps;
 - page size **200**;
-- a new matching record inserted after page 1.
+- one new matching record inserted after page 1.
 
-Required properties:
+Quality #306 requires exactly 10,000 original records, zero duplicates/skips, no foreign-owner data, exactly 50 pages, stable handling of the post-start insert, total traversal ≤5,000 ms and every page ≤1,000 ms.
 
-- exactly 10,000 original records traversed;
-- zero duplicates/skips;
-- no foreign-owner data;
-- exactly 50 pages;
-- post-start insert excluded from the active traversal and visible to a fresh traversal;
-- total traversal ≤ **5,000 ms**;
-- every page ≤ **1,000 ms**.
+Final reference examples from the Quality #306 implementation HEAD:
 
-Initial Ubuntu evidence before final documentation synchronization: **692.30 ms total**, **19.77 ms max page**, **13.79 ms mean page**. These are hosted-CI regression observations, not production SLA claims. Current evidence does not justify a new pagination index/migration.
+| Platform | Total traversal | Max page |
+|---|---:|---:|
+| Windows | **~585 ms** | **16.51 ms** |
+| macOS | **440.66 ms** | **24.72 ms** |
+| Ubuntu | **well below 1 s** | **well below 1 s** |
+
+These are hosted-CI regression observations, not production SLA claims. All three platforms passed comfortably, so current evidence does not justify a new pagination index/migration.
 
 See [PAGINATION.md](PAGINATION.md) for the detailed contract.
 
@@ -144,8 +144,8 @@ Not planned: workspace invitations, team-role hierarchies, billing/organization 
 
 ## Next engineering order
 
-1. Finish PR #73 / MEM-30 exact-head Quality and merge if green.
-2. Reconcile MEM-12 Dashboard against the pagination work; keep only remaining maintenance/UX gaps.
+1. Merge the state-reconciled PR #73 after its documentation-only exact-head Quality passes.
+2. Complete the remaining MEM-12 Dashboard maintenance/UX subset.
 3. Implement MEM-29 incrementally: `create_application(settings)` + explicit idempotent MCP Tool Registry, starting with Maintenance/Deletion instead of a rewrite.
 4. Reconcile MEM-17 distribution scope against the already-complete v0.3 release foundation.
 5. MEM-33/Issue #53 remains blocked on PyPI Trusted Publishing configuration, then MCP Registry publication.
