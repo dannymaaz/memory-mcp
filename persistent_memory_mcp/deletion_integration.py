@@ -9,7 +9,6 @@ from typing import Any, Callable, Iterable
 from .isolation import normalize_scope
 from .retention import (
     ALLOWED_MEMORY_TYPES,
-    ConfirmationError,
     ForgetPlan,
     USED_CONFIRMATION_FINGERPRINTS,
     assert_confirmation_unused,
