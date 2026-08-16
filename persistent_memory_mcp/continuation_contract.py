@@ -6,6 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 from .security import redact_sensitive_value
 
@@ -47,19 +48,42 @@ def _bounded_items(value: Any, *, limit: int = MAX_ITEMS) -> list[Any]:
 
 
 def _normalize_remote(value: Any) -> str:
-    remote = str(value or "").strip().rstrip("/")
-    if remote.endswith(".git"):
-        remote = remote[:-4]
-    if remote.startswith("git@") and ":" in remote:
-        host_path = remote[4:].replace(":", "/", 1)
-        remote = host_path
-    if remote.startswith("ssh://git@"):
-        remote = remote[len("ssh://git@") :]
-    for prefix in ("https://", "http://", "ssh://"):
-        if remote.startswith(prefix):
-            remote = remote[len(prefix) :]
-            break
-    return remote.casefold()
+    """Return a stable credential-free host/path identity for a Git remote."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    host = ""
+    path = ""
+    port: int | None = None
+    if "://" in raw:
+        parsed = urlsplit(raw)
+        host = parsed.hostname or ""
+        path = parsed.path
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+    elif "@" in raw and ":" in raw.rsplit("@", 1)[-1]:
+        host_path = raw.rsplit("@", 1)[-1]
+        host, path = host_path.split(":", 1)
+    else:
+        clean = raw.split("?", 1)[0].split("#", 1)[0]
+        if "@" in clean:
+            clean = clean.rsplit("@", 1)[-1]
+        if "/" in clean:
+            host, path = clean.split("/", 1)
+        else:
+            host = clean
+
+    normalized_path = path.strip("/")
+    if normalized_path.endswith(".git"):
+        normalized_path = normalized_path[:-4]
+    normalized_host = host.strip().casefold()
+    if port is not None:
+        normalized_host = f"{normalized_host}:{port}"
+    canonical = "/".join(part for part in (normalized_host, normalized_path) if part)
+    return canonical.casefold().rstrip("/")
 
 
 def _normalize_root(value: Any) -> str:
