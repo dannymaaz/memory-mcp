@@ -1,24 +1,25 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled for PR #73 / MEM-30 after Quality #306. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled for PR #77 / MEM-12 during its final review. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
-The v0.3 technical foundation and the complete five-step post-v0.3 Context Compiler phase are delivered. The product now has recoverable/versioned SQLite storage, hard context budgets, progressive repository retrieval, persistent code provenance, deterministic quality/adversarial CI gates and a bounded operational project map/Galaxy.
+The v0.3 technical foundation and the complete five-step post-v0.3 Context Compiler phase are delivered. The product has recoverable/versioned SQLite storage, hard context budgets, progressive repository retrieval, persistent code provenance, deterministic quality/adversarial CI gates and a bounded operational project map/Galaxy.
 
 Post-phase reliability work now also includes:
 
 - **automatic continuation — complete:** PR #71 / Quality #290 adds repository-bound project resolution plus Continuation Contract v1 shared by normal close, cross-interface handoff and idle expiry;
-- **deterministic storage pagination — complete:** PR #73 / MEM-30 adds bounded keyset pagination to SQLite, local MCP history reads and Dashboard drill-down, validated by Quality #306 and a cross-platform 10,000-record regression gate.
+- **deterministic storage pagination — complete:** PR #73 / MEM-30 adds bounded keyset pagination to SQLite, local MCP history reads and Dashboard drill-down;
+- **Dashboard maintenance/UX — in final review:** PR #77 / MEM-12 adds bounded health/storage/backup/verification/sensitivity status plus safe local backup, signed restore preview/confirm and signed selective-deletion preview/confirm flows.
 
-External release publication remains separately blocked on the user-side PyPI Trusted Publishing configuration before MCP Registry publication can proceed.
+External release publication remains separately blocked on user-side PyPI Trusted Publishing configuration before MCP Registry publication can proceed.
 
 ## Current capability matrix
 
 | Capability | Status | Evidence | Remaining gap |
 |---|---|---|---|
 | SQLite local-first storage | Complete foundation | WAL, foreign keys, schema v2, backup-first migrations | Future numbered migrations as schema evolves |
-| Backup / manifest / health / restore | Complete foundation | PR #29/#35/#39/#43 | Optional rotation/signing/UI refinements |
+| Backup / manifest / health / restore | Complete foundation | PR #29/#35/#39/#43 | Optional rotation/signing refinements |
 | Installed upgrade lifecycle | Complete | v0.2.0 → current package regression | Future release migrations |
 | Runtime Settings | Complete foundation | validated SQLite-first configuration | Specialized provider settings remain incremental |
 | Context Packet + token accounting | Complete | PR #60 / Quality #226 | Extend only as evidence contracts evolve |
@@ -27,10 +28,10 @@ External release publication remains separately blocked on the user-side PyPI Tr
 | Context quality/adversarial gates | Complete | PR #66 / Quality #262 | Thresholds can tighten, not silently regress |
 | Operational project map / Galaxy | Complete | PR #68 / Quality #282 | Additional UX refinement only |
 | Automatic Continuation Contract | Complete | PR #71 / Quality #290 | Future richer checkpoint fields only when justified |
-| Deterministic keyset pagination | **Complete** | PR #73 / MEM-30 / Quality #306 | Optional remote-adapter pagination parity only if later required |
+| Deterministic keyset pagination | Complete | PR #73 / MEM-30 / Quality #306 | Optional remote-adapter parity only if later required |
 | Hybrid search / embeddings | Complete foundation | semantic + lexical local fallback | Broader quality/cost benchmark corpus |
-| Dashboard | Partial/advancing | PR #68 + PR #73 | Maintenance cards, explicit loading/empty/error UX |
-| Application container / Tool Registry | Planned | MEM-29 | Reduce runtime wrapper/registration coupling |
+| Dashboard maintenance/UX | **In final review** | PR #77 / Issue #76 / MEM-12 | Exact final documentation-head Quality + merge |
+| Application container / Tool Registry | Planned | MEM-29 / Issue #75 | Reduce runtime wrapper/registration coupling |
 | PyPI + MCP Registry publication | Externally blocked | MEM-33 / Issue #53 | Configure PyPI Trusted Publishing, publish, then registry |
 | Teams / public collaboration | Out of scope | explicit product decision | no implementation planned |
 
@@ -114,17 +115,40 @@ Pagination testing found a real safety gap: a payload such as `{"token": "secret
 
 Quality #306 requires exactly 10,000 original records, zero duplicates/skips, no foreign-owner data, exactly 50 pages, stable handling of the post-start insert, total traversal ≤5,000 ms and every page ≤1,000 ms.
 
-Final reference examples from the Quality #306 implementation HEAD:
-
-| Platform | Total traversal | Max page |
-|---|---:|---:|
-| Windows | **~585 ms** | **16.51 ms** |
-| macOS | **440.66 ms** | **24.72 ms** |
-| Ubuntu | **well below 1 s** | **well below 1 s** |
-
-These are hosted-CI regression observations, not production SLA claims. All three platforms passed comfortably, so current evidence does not justify a new pagination index/migration.
-
 See [PAGINATION.md](PAGINATION.md) for the detailed contract.
+
+## Dashboard maintenance/UX — final review
+
+PR #77 / MEM-12 closes the remaining genuine Dashboard subset while preserving the local-only product boundary.
+
+### Status and cards
+
+`DashboardStatusService` reuses `HealthService` and bounded aggregate SQL instead of duplicating maintenance checks. The localhost Dashboard and `GET /api/maintenance/status` expose:
+
+- SQLite health and maintenance readiness;
+- schema/SQLite/journal state;
+- database/WAL/SHM sizes and free disk space;
+- latest verified backup metadata when `--backup-dir` is configured;
+- persisted symbol/evidence verification-state counts;
+- owner/project-scoped sensitivity aggregates;
+- explicit empty/error states without absolute database/backup paths.
+
+The bounded snapshot and Galaxy remain read-only. PR #73 `/api/table-page` continues to provide deterministic drill-down.
+
+### Safe maintenance actions
+
+The Dashboard now adapts the **existing** maintenance and retention services instead of introducing raw HTTP-handler mutations:
+
+- verified backup uses a server-generated filename inside explicit `--backup-dir`;
+- restore uses signed `preview → confirm`, then the existing safety-backup/atomic-replace/post-validation/rollback contract;
+- selective deletion uses signed `preview → confirm`, one owner/project scope and at most **100 explicit record IDs**;
+- MCP and Dashboard deletion share consumed confirmation fingerprints so a plan used through one interface is consumed for the other;
+- mutable routes require JSON, `X-Memory-MCP-Action: 1`, a **64 KiB** request limit and localhost-only server binding;
+- the page CSP permits only same-origin action fetches while keeping the broader Dashboard surface private.
+
+Tests exercise real localhost HTTP backup, restore and deletion flows, anti-CSRF/header/media-type rejection, single-use confirmations, path non-disclosure and UI/CSP state.
+
+See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 
 ## Local data-safety contracts
 
@@ -134,6 +158,7 @@ See [PAGINATION.md](PAGINATION.md) for the detailed contract.
 - **restore:** preview → exact confirmation → fresh verified safety backup → atomic replacement → post-validation/rollback;
 - **migration:** preview → checksum verification → verified backup → transactional explicit apply;
 - **deletion:** exact scoped plan + short-lived confirmation;
+- **Dashboard maintenance:** localhost-only adapter; normal views read-only; mutable actions reuse backup/restore/delete contracts rather than raw SQL;
 - **context/repository:** bounded, provenance-aware and non-executing by default.
 
 ## Product scope
@@ -144,8 +169,7 @@ Not planned: workspace invitations, team-role hierarchies, billing/organization 
 
 ## Next engineering order
 
-1. Merge the state-reconciled PR #73 after its documentation-only exact-head Quality passes.
-2. Complete the remaining MEM-12 Dashboard maintenance/UX subset.
-3. Implement MEM-29 incrementally: `create_application(settings)` + explicit idempotent MCP Tool Registry, starting with Maintenance/Deletion instead of a rewrite.
-4. Reconcile MEM-17 distribution scope against the already-complete v0.3 release foundation.
-5. MEM-33/Issue #53 remains blocked on PyPI Trusted Publishing configuration, then MCP Registry publication.
+1. Complete the exact final-head Quality and merge **PR #77 / MEM-12**.
+2. Implement **MEM-29 / Issue #75** incrementally: `create_application(settings)` + explicit idempotent MCP Tool Registry, starting with Maintenance/Deletion instead of a rewrite.
+3. Reconcile **MEM-17 distribution scope** against the already-complete v0.3 release foundation.
+4. **MEM-33 / Issue #53** remains blocked on PyPI Trusted Publishing configuration, then MCP Registry publication.
