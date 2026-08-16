@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "evaluator_version": "1.0",
+  "thresholds": {
+    "file_recall_at_5_min": 1.0,
+    "symbol_recall_at_8_min": 1.0,
+    "file_precision_at_5_min": 0.2,
+    "symbol_precision_at_8_min": 0.125,
+    "token_fit_rate_min": 1.0,
+    "token_savings_rate_min": 0.4,
+    "provenance_coverage_min": 1.0,
+    "max_task_latency_ms": 20000,
+    "safety_pass_rate_min": 1.0
+  }
+}
