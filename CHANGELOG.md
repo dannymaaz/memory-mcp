@@ -24,6 +24,7 @@ Persistent Memory MCP 0.3.0 turns the local-first SQLite path into a recoverable
 ### Changed
 
 - SQLite is the normal local installation path; Supabase and PostgreSQL drivers are optional extras.
+- The MCP Python SDK is constrained to the supported v1 line (`mcp>=1.28,<2`) so v0.3.0 uses its real `FastMCP` server implementation; MCP v2 migration is deferred to a deliberate later compatibility change.
 - CI covers Python 3.11, 3.12 and 3.13 on Ubuntu, Windows and macOS.
 - CLI status markers use portable ASCII output (`[ok]`, `[error]`, `[skip]`) so redirected Windows consoles do not fail under CP1252.
 - `SQLiteStorage` context-managed connections now preserve native commit/rollback semantics and close deterministically at context exit.
