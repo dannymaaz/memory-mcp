@@ -114,7 +114,7 @@ Post-v0.3 `main` migrates deliberately to the MCP Python SDK v2 `MCPServer` API:
 - real installed-SDK regressions exercise public tool listing/calling and replacement;
 - no database, storage, Dashboard or destructive-confirmation contract changes.
 
-Quality #387 validates the functional migration across the supported matrix before this documentation reconciliation. A fresh exact-head Quality is required before PR #100 can be marked complete and merged.
+Quality #387 validates the functional migration across the supported matrix before documentation reconciliation. A fresh exact-head Quality is required before PR #100 can be marked complete and merged.
 
 See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
 
@@ -184,9 +184,11 @@ Until steps 1–7 are complete, the README must not imply that public PyPI insta
 
 See [RELEASING.md](RELEASING.md) and [UPGRADING.md](UPGRADING.md).
 
-## Distribution scope decision
+## Distribution scope decision — ✅ Complete
 
-Docker/Render/Railway-style deployment can be documented later as **optional self-managed deployment**, but it is not a requirement for the local-first core. MEM-17 should not silently turn the project into a hosted multi-tenant service.
+MEM-17 already records the canonical scope decision: official core distribution stays **local-first and Python-first**. Docker, Render, Railway and equivalent platforms are optional future **self-managed** deployment documentation only; they are not v0.3.0 blockers and must not be presented as an official hosted SaaS.
+
+There is no remaining internal product-definition task under MEM-17. The unfinished MEM-17/MEM-33 work is the same external publication sequence tracked by Issue #53: tag, verified release assets, GitHub Release, PyPI Trusted Publisher/public smoke test and MCP Registry.
 
 ## Product scope — 🚫 No collaborative SaaS
 
@@ -204,9 +206,8 @@ Workspace invitations, shared team roles, billing/organization administration an
 ## Next recommended order
 
 1. Finish **PR #100 / Issue #88 / MEM-42** with exact-head Quality after documentation reconciliation, then merge the MCP v2 mainline migration.
-2. Complete **Issue #53 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
-3. Close the remaining **MEM-17 distribution-scope documentation decision**, keeping optional deployments separate from the local-first core.
-4. Start no new numbered product phase until release evidence and external distribution state are synchronized.
+2. Complete **Issue #53 / MEM-17 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
+3. Start no new numbered product phase until release evidence and external distribution state are synchronized.
 
 ## Definition of done
 
