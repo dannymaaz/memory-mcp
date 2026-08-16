@@ -1,0 +1,52 @@
+name: MCP v2 branch patch
+
+on:
+  push:
+    branches:
+      - feature/mcp-v2-runtime
+    paths:
+      - .github/workflows/mcp-v2-branch-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-runtime:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/mcp-v2-runtime
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch legacy server runtime to MCP v2
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/server.py')
+          source = path.read_text(encoding='utf-8')
+          marker = "try:\n    from mcp.server.fastmcp import FastMCP"
+          start = source.index(marker)
+          end = source.index("\nfrom .interface_detector", start)
+          source = source[:start] + "from mcp.server import MCPServer\n" + source[end:]
+          old = "server = FastMCP("
+          if old not in source:
+              raise SystemExit('FastMCP constructor marker not found')
+          source = source.replace(old, "server = MCPServer(", 1)
+          if "mcp.server.fastmcp" in source or "class FastMCP" in source:
+              raise SystemExit('legacy FastMCP fallback remains in src/server.py')
+          path.write_text(source, encoding='utf-8')
+          PY
+          python -m compileall src/server.py
+          git diff --check
+      - name: Commit branch patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/server.py
+          git commit -m "Migrate server runtime to MCPServer v2"
+          git push origin HEAD:feature/mcp-v2-runtime
