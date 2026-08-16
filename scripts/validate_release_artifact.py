@@ -68,6 +68,9 @@ def _validate_archive_assets(dist_dir: Path) -> Path:
         names = set(archive.namelist())
         required_assets = {
             "persistent_memory_mcp/sqlite_schema.sql",
+            "persistent_memory_mcp/symbol_evolution_schema.sql",
+            "persistent_memory_mcp/symbol_evolution.py",
+            "persistent_memory_mcp/sqlite_migrations/m0002_symbol_evolution.py",
             "persistent_memory_mcp/__init__.py",
             "persistent_memory_mcp/runtime.py",
             "persistent_memory_mcp/migration_cli.py",
@@ -81,6 +84,9 @@ def _validate_archive_assets(dist_dir: Path) -> Path:
         names = tuple(archive.getnames())
         required_suffixes = (
             "/persistent_memory_mcp/sqlite_schema.sql",
+            "/persistent_memory_mcp/symbol_evolution_schema.sql",
+            "/persistent_memory_mcp/symbol_evolution.py",
+            "/persistent_memory_mcp/sqlite_migrations/m0002_symbol_evolution.py",
             "/persistent_memory_mcp/runtime.py",
             "/persistent_memory_mcp/migration_cli.py",
             "/persistent_memory_mcp/migration_service.py",
@@ -177,7 +183,7 @@ def validate(dist_dir: Path) -> None:
             ).fetchall()
         finally:
             connection.close()
-        if schema_version != 1 or migration_rows != [(1,)]:
+        if schema_version != 2 or migration_rows != [(1,), (2,)]:
             raise RuntimeError(
                 "Fresh wheel initialization did not bootstrap current migration state: "
                 f"user_version={schema_version}, history={migration_rows}"
