@@ -1,18 +1,19 @@
 # Persistent Memory MCP implementation status
 
-Last reconciled after PR #91 / Quality #368 on 2026-08-16. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
+Last reconciled during PR #100 / Quality #387 on 2026-08-16. Persistent Memory MCP remains a **local-first, personal, SQLite-first and localhost-only** product.
 
 ## Executive summary
 
-The v0.3 technical foundation, the complete five-step Context Compiler phase and the planned post-phase reliability/architecture work are delivered. The repository now also contains the guarded PyPI Trusted Publishing path.
+The v0.3 technical foundation, the complete five-step Context Compiler phase and the planned post-phase reliability/architecture work are delivered. Post-v0.3 `main` is now migrating deliberately to the MCP Python SDK v2 `MCPServer` API while the immutable v0.3.0 release candidate remains isolated on its previously validated MCP v1 compatibility boundary.
 
-The principal unfinished work is **operational publication**, not application implementation:
+The principal unfinished product work is now **operational publication**, not a missing local feature:
 
 - the immutable v0.3.0 release candidate is validated;
 - the repository-side publication workflow is merged and validated;
 - `v0.3.0` has not yet been tagged/published as a GitHub Release;
 - PyPI Trusted Publisher account configuration and public publication remain external/operational steps;
-- MCP Registry submission follows successful public PyPI validation.
+- MCP Registry submission follows successful public PyPI validation;
+- PR #100 is the final open technical migration and requires an exact-head post-documentation Quality before merge.
 
 ## Current capability matrix
 
@@ -30,9 +31,10 @@ The principal unfinished work is **operational publication**, not application im
 | Automatic Continuation Contract | Complete | PR #71 / Quality #290 | Future fields only when justified |
 | Deterministic keyset pagination | Complete | PR #73 / MEM-30 / Quality #306 | Optional remote-adapter parity if later required |
 | Dashboard maintenance/UX | Complete | PR #77 / Quality #338 | Optional UX polish only |
-| Application container / Tool Registry | Complete | PR #80 / Quality #346 | Migrate more integrations only when justified |
+| Application container / Tool Registry | Complete | PR #80 / Quality #346 | Extend composition only when justified |
 | Security policy / dependency automation | Complete | PR #83 / Quality #352 | Routine maintenance |
-| MCP SDK v1 compatibility | Complete | PR #85 / Quality #360 | Deliberate MCP v2 migration tracked in #88 |
+| MCP SDK v1 release compatibility | Complete | PR #85 / Quality #360 | Frozen for immutable v0.3.0 release line |
+| MCP SDK v2 mainline runtime | In review | Issue #88 / PR #100 / MEM-42 / functional Quality #387 | Fresh exact-head Quality after docs, then merge |
 | Immutable v0.3.0 release candidate | Complete | PR #89 / Quality #361 / `9e0a084d...` | Operational tag/release creation |
 | Repository PyPI publishing path | Complete | PR #91 / Quality #368 / `9f439442...` | External Trusted Publisher + release assets required |
 | Public GitHub v0.3.0 release | Pending | Issue #53 | Tag exact release SHA, pass artifact workflow, create release |
@@ -72,7 +74,7 @@ See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 
 ### Application composition + Tool Registry — complete
 
-PR #80 / MEM-29 introduced `create_application(settings)` and one shared idempotent Tool Registry without rewriting the legacy server or changing public MCP tool contracts. Confirmed Deletion and Verified Restore/Maintenance were the first migrated integrations.
+PR #80 / MEM-29 introduced `create_application(settings)` and one shared idempotent Tool Registry without changing public MCP tool contracts. Confirmed Deletion and Verified Restore/Maintenance were the first migrated integrations.
 
 Quality #346 passed before squash merge `f85b4d691ce1716b20ad7a49a02ca62227d03614`.
 
@@ -84,21 +86,40 @@ PR #83 recreated the useful work from stale PR #74 on current `main`, added `SEC
 
 PR #74 is closed as superseded.
 
-### MCP SDK compatibility — complete
+### MCP SDK v1 release compatibility — complete
 
 Issue #81 identified that the previous broad MCP dependency could resolve MCP 2.x while the runtime still imported the v1 `mcp.server.fastmcp.FastMCP` API.
 
-PR #85 now constrains the current runtime to:
+PR #85 constrained that runtime boundary to:
 
 ```text
 mcp>=1.28,<2
 ```
 
-It adds regressions proving the installed FastMCP v1 implementation is used instead of the local fallback and that the MEM-29 Tool Registry works against the installed implementation.
+It added regressions proving the installed FastMCP v1 implementation is used instead of the local fallback and that the MEM-29 Tool Registry works against the installed implementation.
 
 Quality #360 passed on the exact PR head; squash merge: `df854b6ff28c12aeb47a7bd53bed84429dcbc58c`.
 
-Issue #88 owns the future deliberate MCP v2 `MCPServer` migration.
+This compatibility state is retained intentionally by the immutable v0.3.0 release candidate and is not rewritten by post-v0.3 `main` development.
+
+### MCP SDK v2 mainline migration — in review
+
+Issue #88 / PR #100 / MEM-42 deliberately migrates post-v0.3 `main` to the MCP SDK v2 server API.
+
+The branch now:
+
+- imports `MCPServer` from `mcp.server` directly;
+- removes the silent local MCP fallback;
+- changes the mainline dependency to `mcp>=2,<3`;
+- replaces Tool Registry private `_tools` / `_tool_manager` mutation with public `remove_tool()` + `add_tool()`;
+- keeps application composition order unchanged;
+- preserves public tool names, arguments, result payloads and stdio startup;
+- validates the actual installed MCP v2 runtime with public tool listing/calling/replacement tests;
+- changes no database/storage schema, Dashboard exposure or destructive-confirmation semantics.
+
+Functional Quality #387 validates the migration matrix before documentation reconciliation. Because README/ROADMAP/IMPLEMENTATION_STATUS updates move the branch HEAD, a fresh full exact-head Quality is required before PR #100 is marked ready and merged.
+
+See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
 
 ## Local data-safety contracts
 
@@ -130,7 +151,7 @@ PR #89 merged into `release/v0.3.0-final` as:
 9e0a084dd9b179612082edef99e1c3c9bf563ffa
 ```
 
-This is the **only valid `v0.3.0` tag target**. Current `main` contains later features and must not be tagged as v0.3.0.
+This is the **only valid `v0.3.0` tag target**. Current `main` contains later features, including the MCP v2 runtime migration, and must not be tagged as v0.3.0.
 
 ## PyPI Trusted Publishing path
 
@@ -181,7 +202,7 @@ Not planned: workspace invitations, team-role hierarchies, billing/organization 
 
 ## Next engineering order
 
-1. Complete Issue #53 / MEM-33 operational publication: exact tag → artifact gate → GitHub Release → Trusted Publisher → public PyPI smoke test → MCP Registry.
-2. Resolve MEM-17 optional deployment documentation scope without changing the local-first product boundary.
-3. Once the v0.3.0 release is stable, evaluate Issue #88 for deliberate MCP v2 migration.
+1. Finish PR #100 / Issue #88 / MEM-42 with a fresh exact-head Quality and merge the MCP v2 mainline migration.
+2. Complete Issue #53 / MEM-33 operational publication: exact tag → artifact gate → GitHub Release → Trusted Publisher → public PyPI smoke test → MCP Registry.
+3. Resolve MEM-17 optional deployment documentation scope without changing the local-first product boundary.
 4. Start no new numbered product phase until public release evidence and project records are synchronized.
