@@ -38,7 +38,9 @@ class DashboardActionError(ValueError):
 def _safe_backup_name(value: Any) -> str:
     name = str(value or "").strip()
     if not name or name != Path(name).name or name in {".", ".."}:
-        raise DashboardActionError("backup_name must be a file name inside the configured backup directory")
+        raise DashboardActionError(
+            "backup_name must be a file name inside the configured backup directory"
+        )
     if not name.endswith(".db"):
         raise DashboardActionError("backup_name must end in .db")
     return name
@@ -174,7 +176,9 @@ class DashboardMaintenanceActions:
         if not requested:
             raise DashboardActionError("record_ids are required")
         if len(requested) > MAX_DELETE_IDS:
-            raise DashboardActionError(f"at most {MAX_DELETE_IDS} record_ids may be planned at once")
+            raise DashboardActionError(
+                f"at most {MAX_DELETE_IDS} record_ids may be planned at once"
+            )
         self._assert_project(project)
         selected = self._select_deletion_records(table, project, requested)
         scope = normalize_scope(self.owner_id, project_id=project)
@@ -279,7 +283,7 @@ class DashboardMaintenanceActions:
                 )
             placeholders = ",".join("?" for _ in ids)
             rows = connection.execute(
-                f'select id, owner_id, project_id, created_at from "{table}" '
+                f'select id, owner_id, project_id from "{table}" '
                 f'where owner_id=? and project_id=? and id in ({placeholders})',
                 [self.owner_id, project_id, *ids],
             ).fetchall()
