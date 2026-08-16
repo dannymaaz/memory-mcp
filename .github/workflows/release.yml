@@ -13,10 +13,10 @@ jobs:
     name: Build validated release bundle
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -44,7 +44,7 @@ jobs:
       - name: Revalidate installed v0.2.0 upgrade
         run: python scripts/validate_v020_upgrade.py dist .
       - name: Upload release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: persistent-memory-mcp-${{ github.ref_name }}
           path: |
