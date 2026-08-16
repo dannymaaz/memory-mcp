@@ -65,6 +65,8 @@ jobs:
         run: pytest -q tests/test_tokenization.py tests/test_context_packet.py tests/test_context_packet_routing.py
       - name: Report progressive repository retrieval metrics
         run: python scripts/evaluate_repository_retrieval.py
+      - name: Report persistent symbol evolution metrics
+        run: python scripts/evaluate_symbol_evolution.py
 
   release-artifacts:
     name: Release artifacts · ${{ matrix.os }}
