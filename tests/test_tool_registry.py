@@ -89,10 +89,10 @@ def test_register_updates_fastmcp_manager_tool_without_duplicate_decorator() -> 
     assert len(module.TOOL_SCHEMAS) == 1
 
 
-def test_register_works_with_installed_fastmcp() -> None:
-    from mcp.server.fastmcp import FastMCP
+def test_register_works_with_runtime_selected_server_class() -> None:
+    from src.server import FastMCP
 
-    server = FastMCP(name="registry-test")
+    server = FastMCP("registry-test")
     module = _module(server)
     registry = ToolRegistry(module)
 
@@ -102,15 +102,23 @@ def test_register_works_with_installed_fastmcp() -> None:
     def second(value: str) -> str:
         return f"second:{value}"
 
-    registry.register("real_sample", "Real FastMCP sample", first)
-    registry.register("real_sample", "Updated real FastMCP sample", second)
+    registry.register("runtime_sample", "Runtime server sample", first)
+    registry.register("runtime_sample", "Updated runtime server sample", second)
 
-    managed = server._tool_manager._tools["real_sample"]
-    callback = getattr(managed, "fn", getattr(managed, "function", None))
-    assert callback is second
-    assert module.TOOL_HANDLERS["real_sample"] is second
+    tools = getattr(server, "_tools", None)
+    manager = getattr(server, "_tool_manager", None)
+    managed = getattr(manager, "_tools", None)
+    if isinstance(tools, dict):
+        assert tools["runtime_sample"] is second
+    elif isinstance(managed, dict):
+        registered = managed["runtime_sample"]
+        callback = getattr(registered, "fn", getattr(registered, "function", None))
+        assert callback is second
+    else:  # pragma: no cover - guards a future server implementation change
+        pytest.fail("runtime-selected MCP server exposes no supported registry surface")
+    assert module.TOOL_HANDLERS["runtime_sample"] is second
     assert module.TOOL_SCHEMAS == [
-        {"name": "real_sample", "description": "Updated real FastMCP sample"}
+        {"name": "runtime_sample", "description": "Updated runtime server sample"}
     ]
 
 
