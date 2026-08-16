@@ -110,7 +110,7 @@ The Dashboard search field `q` remains part of the bounded overview snapshot. It
 
 Pagination exposed a useful hardening case: a JSON mapping such as `{"token": "secret-value"}` may not match a provider-specific token pattern.
 
-`redact_sensitive_value()` therefore also redacts values under exact credential-bearing mapping keys such as:
+`redact_sensitive_value()` therefore also redacts otherwise-undetected scalar strings under exact credential-bearing mapping keys such as:
 
 - `token` / `access_token` / `refresh_token`;
 - `password` / `passwd`;
@@ -120,7 +120,7 @@ Pagination exposed a useful hardening case: a JSON mapping such as `{"token": "s
 - `credential` / `credentials`;
 - `private_key`.
 
-Unrelated metric names such as `token_count` are not redacted.
+Recursive detection still runs first. Nested containers preserve their shape, more specific existing pattern labels remain intact, already-redacted values are idempotent and unrelated metric names such as `token_count` are not redacted.
 
 ## Reproducible evaluation
 
@@ -143,17 +143,17 @@ The gate requires:
 - total traversal ≤ **5,000 ms**;
 - every page ≤ **1,000 ms**.
 
-Initial Ubuntu reference evidence before final documentation synchronization:
+Quality #306 cross-platform reference examples:
 
-| Metric | Observed |
-|---|---:|
-| Records traversed | **10,000** |
-| Pages | **50** |
-| Mean page latency | **13.79 ms** |
-| Maximum page latency | **19.77 ms** |
-| Total traversal latency | **692.30 ms** |
+| Platform | Records | Pages | Total traversal | Max page |
+|---|---:|---:|---:|---:|
+| Ubuntu | **10,000** | **50** | **well below 1 s** | **well below 1 s** |
+| Windows | **10,000** | **50** | **~585 ms** | **16.51 ms** |
+| macOS | **10,000** | **50** | **440.66 ms** | **24.72 ms** |
 
-These timings are regression-fixture observations from hosted CI, not production SLA claims. The thresholds are intentionally much wider so normal hosted-runner variance does not create flaky builds while pathological growth still blocks CI.
+Every reference job passed the snapshot, duplicate, isolation and latency checks. These timings are regression-fixture observations from hosted CI, not production SLA claims. The thresholds are intentionally much wider so normal hosted-runner variance does not create flaky builds while pathological growth still blocks CI.
+
+The observed margins do **not** justify introducing a new pagination-specific schema migration/index at this time.
 
 ## Local reproduction
 
