@@ -10,6 +10,7 @@ from persistent_memory_mcp.continuation_contract import (
     build_continuation_snapshot,
     install_continuation_contract,
 )
+from persistent_memory_mcp.session_lifecycle import install_session_lifecycle
 
 
 class RepoContext:
@@ -33,7 +34,9 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
                 "id": "session-1",
                 "project_id": "project-1",
                 "interface": "codex",
+                "model_name": "gpt",
                 "status": "active",
+                "created_at": "2026-08-16T03:30:00+00:00",
                 "metadata": {"current_goal": "Finish continuation"},
             }
         ],
@@ -55,13 +58,25 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
     }
     calls: list[dict[str, Any]] = []
 
-    def table_select(_client: Any, table: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def table_select(
+        _client: Any,
+        table: str,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         values = rows.get(table, [])
         if not filters:
             return list(values)
-        return [row for row in values if all(row.get(key) == value for key, value in filters.items())]
+        return [
+            row
+            for row in values
+            if all(row.get(key) == value for key, value in filters.items())
+        ]
 
-    def table_upsert(_client: Any, table: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def table_upsert(
+        _client: Any,
+        table: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         current = dict(payload)
         existing = rows.setdefault(table, [])
         key = current.get("id")
@@ -72,10 +87,16 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
         existing.append(current)
         return current
 
-    def original_resolve(_client: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    def original_resolve(
+        _client: Any,
+        **kwargs: Any,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         calls.append(dict(kwargs))
         project_id = kwargs.get("project_id") or "created-project"
-        project = next((row for row in rows["projects"] if row.get("id") == project_id), None)
+        project = next(
+            (row for row in rows["projects"] if row.get("id") == project_id),
+            None,
+        )
         if project is None:
             project = {
                 "id": project_id,
@@ -93,7 +114,30 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
         }
         return project, {"id": "workspace-1"}, repo
 
+    def original_create(**kwargs: Any) -> dict[str, Any]:
+        payload = {
+            "id": "session-new",
+            "project_id": kwargs.get("project_id") or "project-1",
+            "interface": kwargs.get("interface") or "codex",
+            "model_name": kwargs.get("model_name") or "gpt",
+            "status": "active",
+            "created_at": "2026-08-16T04:00:00+00:00",
+            "metadata": {"current_goal": kwargs.get("current_goal", "")},
+        }
+        rows["sessions"].append(payload)
+        return {
+            "status": "ok",
+            "project_id": payload["project_id"],
+            "session_id": payload["id"],
+            "interface": payload["interface"],
+            "model_name": payload["model_name"],
+        }
+
     def original_end(**kwargs: Any) -> dict[str, Any]:
+        session_id = kwargs.get("session_id")
+        for session in rows["sessions"]:
+            if session.get("id") == session_id:
+                session["status"] = "ended"
         checkpoint = {
             "id": "checkpoint-1",
             "project_id": kwargs.get("project_id"),
@@ -103,9 +147,16 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
         rows["checkpoints"] = [checkpoint]
         return {
             "status": "ok",
-            "session_id": kwargs.get("session_id"),
+            "session_id": session_id,
             "checkpoint_id": "checkpoint-1",
             "next_step": kwargs.get("next_step", ""),
+        }
+
+    def original_sync(**kwargs: Any) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "session_id": kwargs.get("session_id"),
+            "state_keys": sorted((kwargs.get("state") or {}).keys()),
         }
 
     def original_resume(**kwargs: Any) -> dict[str, Any]:
@@ -129,17 +180,31 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
 
     module = SimpleNamespace(
         server=FakeServer(),
-        TOOL_HANDLERS={"end_session": original_end, "resume_project": original_resume},
+        TOOL_HANDLERS={
+            "create_session": original_create,
+            "end_session": original_end,
+            "sync_session_state": original_sync,
+            "resume_project": original_resume,
+        },
         _resolve_or_create_project=original_resolve,
+        create_session=original_create,
         end_session=original_end,
+        sync_session_state=original_sync,
         resume_project=original_resume,
         _client=lambda _owner=None: object(),
         _table_select=table_select,
         _table_upsert=table_upsert,
         _find_active_session=lambda _client, project_id: next(
-            (row for row in rows["sessions"] if row.get("project_id") == project_id), None
+            (
+                row
+                for row in rows["sessions"]
+                if row.get("project_id") == project_id and row.get("status") == "active"
+            ),
+            None,
         ),
         _sort_rows=lambda values: list(reversed(values)),
+        _now_iso=lambda: "2026-08-16T04:00:00+00:00",
+        detect_interface=lambda: "codex",
         detect_repo_context=lambda _path=None: RepoContext(
             repo_root="/work/current",
             repo_name="renamed-local-folder",
@@ -152,7 +217,9 @@ def _fake_module(projects: list[dict[str, Any]] | None = None) -> SimpleNamespac
         ),
     )
     module.server._tools = {
+        "create_session": original_create,
         "end_session": original_end,
+        "sync_session_state": original_sync,
         "resume_project": original_resume,
     }
     module._rows = rows
@@ -285,9 +352,80 @@ def test_resume_project_returns_persisted_continuation_compatibly() -> None:
         ]
     )
     install_continuation_contract(module)
-    module.end_session(session_id="session-1", project_id="project-1", owner_id="owner-1")
+    module.end_session(
+        session_id="session-1",
+        project_id="project-1",
+        owner_id="owner-1",
+    )
     result = module.resume_project(project_id="project-1", owner_id="owner-1")
     assert result["resume"]["what_was_done"] == "Historical summary"
     assert result["resume"]["continuation_version"] == CONTINUATION_VERSION
     assert result["resume"]["continuation"]["objective"] == "Finish continuation"
-    assert result["resume"]["continuation"]["next_action"].startswith("Run api_key=[REDACTED")
+    assert result["resume"]["continuation"]["next_action"] == (
+        "Run [REDACTED:generic_secret] validation"
+    )
+
+
+def test_handoff_uses_continuation_enhanced_end_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MEMORY_SESSION_IDLE_MINUTES", "120")
+    module = _fake_module(
+        [
+            {
+                "id": "project-1",
+                "owner_id": "owner-1",
+                "repo_path": "/work/current",
+                "repo_remote": "git@github.com:dannymaaz/memory-mcp.git",
+            }
+        ]
+    )
+    install_continuation_contract(module)
+    install_session_lifecycle(module)
+
+    result = module.create_session(
+        project_id="project-1",
+        owner_id="owner-1",
+        interface="claude",
+        current_goal="Continue in Claude",
+    )
+
+    assert result["status"] == "ok"
+    assert result["handoff"] is True
+    assert len(module._rows["checkpoints"]) == 1
+    continuation = module._rows["checkpoints"][0]["metadata"]["continuation"]
+    assert continuation["objective"] == "Finish continuation"
+    assert continuation["next_action"] == "Continue in Claude"
+
+
+def test_idle_expiry_uses_continuation_enhanced_end_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MEMORY_SESSION_IDLE_MINUTES", "120")
+    module = _fake_module(
+        [
+            {
+                "id": "project-1",
+                "owner_id": "owner-1",
+                "repo_path": "/work/current",
+                "repo_remote": "git@github.com:dannymaaz/memory-mcp.git",
+            }
+        ]
+    )
+    module._rows["sessions"][0]["created_at"] = "2026-08-16T00:00:00+00:00"
+    install_continuation_contract(module)
+    install_session_lifecycle(module)
+
+    result = module.create_session(
+        project_id="project-1",
+        owner_id="owner-1",
+        interface="codex",
+        current_goal="Resume after timeout",
+    )
+
+    assert result["status"] == "ok"
+    assert result["reused"] is False
+    assert len(module._rows["checkpoints"]) == 1
+    continuation = module._rows["checkpoints"][0]["metadata"]["continuation"]
+    assert continuation["objective"] == "Finish continuation"
+    assert continuation["next_action"] == "Resume after timeout"
