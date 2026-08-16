@@ -28,13 +28,37 @@ Progressive repository retrieval expands map -> files -> symbols -> exact line f
 Persistent symbol evolution stores commit-scoped symbol snapshots and classified added/modified/moved/renamed/deleted changes without storing unbounded source bodies. Evidence can be verified, stale, contradicted, missing_source or unverified.
 
 ## Quality regression gates
-MEM-39 / PR #66 introduces deterministic local quality gates over a versioned non-sensitive coding-task corpus.
+MEM-39 / PR #66 introduced deterministic local quality gates over a versioned non-sensitive coding-task corpus. Quality #262 completed this milestone.
 
 Measured metrics include file recall@5, symbol recall@8, precision, hard token fit, token savings, provenance coverage, latency and safety pass rate. Initial v1 baseline has full recall, token-fit and provenance coverage with 77.22% average token savings against the supported-repository baseline.
 
 Hard adversarial gates cover expired/untrusted memory, prompt injection, dirty repository cursor invalidation, rename identity continuity, contradicted evidence retention and stale evidence after dirty Git changes.
 
 Public evaluation contract: https://github.com/dannymaaz/memory-mcp/blob/main/docs/CONTEXT_QUALITY.md
+
+## Operational project map and Galaxy
+MEM-40 / PR #68 adds a bounded owner-scoped operational projection over the existing SQLite project state and persistent code-symbol evidence.
+
+The read model provides a global project overview plus project impact graphs using project -> repository -> file -> symbol -> task/decision/evidence relationships when persisted links exist. Nodes expose compact risk and verification metadata rather than full source or memory bodies.
+
+Verification states: verified, stale, contradicted, missing_source, unverified.
+Risk projection: critical, high, medium, low, none.
+
+Current-change filtering uses only the latest persisted snapshot run for each repository and keeps the affected code/evidence area without project-wide fan-out.
+
+Local operational endpoints:
+- /api/operational/projects
+- /api/operational/graph?project_id=<id>
+- /api/operational/export.json?project_id=<id>
+- /galaxy/operational?project_id=<id>
+
+Owner resolution fails closed: configured OWNER_ID wins; otherwise an owner is inferred only when exactly one project owner exists. Multiple owners without explicit configuration are rejected instead of mixed.
+
+The operational surface is localhost-only and read-only. It does not execute repository code, mutate project state or expose full content bodies/absolute repository roots. Short labels use existing secret redaction.
+
+The cross-platform bounds fixture contains 20 projects, 120 symbols across 12 files and 20 tasks. The full graph remains 154 nodes / 173 edges, while changed-only reduces it to 55 / 74. Observed reference full-graph time was 6.26 ms Ubuntu, 8.08 ms Windows and 8.56 ms macOS, with a deliberately non-flaky 5,000 ms CI ceiling.
+
+Public operational-map contract: https://github.com/dannymaaz/memory-mcp/blob/main/docs/OPERATIONAL_MAP.md
 
 ## Installation
 pipx install persistent-memory-mcp
@@ -45,4 +69,4 @@ memory-mcp health
 Default local database: ~/.memory-mcp/memory.db
 
 ## Relationship to Git
-Git stores code history. Persistent Memory MCP stores project reasoning and working state while also persisting bounded Git-grounded provenance so later agents can distinguish current verified source evidence from stale or contradicted historical context.
+Git stores code history. Persistent Memory MCP stores project reasoning and working state while persisting bounded Git-grounded provenance so later agents can distinguish current verified source evidence from stale or contradicted historical context. The operational map projects that persisted evidence state; it does not independently run live Git verification on every dashboard request.

@@ -7,6 +7,7 @@ import csv
 import html
 import io
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -17,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .galaxy_view import render_galaxy_view
 from .knowledge_graph import build_knowledge_graph, compact_graph_context
+from .operational_map import OperationalMapLimits, OperationalMapService
 from .storage import SQLiteStorage
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -34,6 +36,12 @@ _DASHBOARD_TABLES = (
 )
 _MAX_LIMIT = 500
 _MAX_QUERY_LENGTH = 200
+_OPERATIONAL_PATHS = {
+    "/api/operational/projects",
+    "/api/operational/graph",
+    "/api/operational/export.json",
+    "/galaxy/operational",
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +50,7 @@ class DashboardConfig:
     port: int = 8765
     sqlite_path: Path = Path.home() / ".memory-mcp" / "memory.db"
     row_limit: int = 100
+    owner_id: str | None = None
 
     def validate(self) -> None:
         if self.host not in _LOOPBACK_HOSTS:
@@ -50,6 +59,8 @@ class DashboardConfig:
             raise ValueError("dashboard port must be between 1 and 65535")
         if not 1 <= self.row_limit <= _MAX_LIMIT:
             raise ValueError(f"dashboard row_limit must be between 1 and {_MAX_LIMIT}")
+        if self.owner_id is not None and not self.owner_id.strip():
+            raise ValueError("dashboard owner_id cannot be empty when provided")
 
 
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
@@ -155,7 +166,10 @@ def dashboard_snapshot(
 def export_snapshot(snapshot: Mapping[str, Any], *, export_format: str) -> tuple[bytes, str]:
     """Export the already-bounded snapshot without exposing local filesystem paths."""
     if export_format == "json":
-        return json.dumps(snapshot, ensure_ascii=False, default=str, indent=2).encode(), "application/json; charset=utf-8"
+        return (
+            json.dumps(snapshot, ensure_ascii=False, default=str, indent=2).encode(),
+            "application/json; charset=utf-8",
+        )
     if export_format != "csv":
         raise ValueError("export format must be json or csv")
     output = io.StringIO()
@@ -186,6 +200,10 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
     query = html.escape(str(filters.get("query") or ""), quote=True)
     project = html.escape(str(filters.get("project_id") or ""), quote=True)
     galaxy_href = "/galaxy" + (f"?project_id={project}" if project else "")
+    operational_href = (
+        f"/galaxy/operational?project_id={project}" if project else "/api/operational/projects"
+    )
+    operational_label = "Operational galaxy" if project else "Operational projects"
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width">'
@@ -203,7 +221,8 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
         f'<form method="get"><input name="project_id" placeholder="Project ID" value="{project}">'
         f'<input name="q" placeholder="Search" maxlength="200" value="{query}">'
         '<button type="submit">Filter</button>'
-        f'<a href="{galaxy_href}">Open galaxy</a></form>'
+        f'<a href="{galaxy_href}">Open galaxy</a>'
+        f'<a href="{operational_href}">{operational_label}</a></form>'
         f'<div class="cards">{cards}</div>{"".join(sections)}</main></body></html>'
     )
 
@@ -218,7 +237,20 @@ def _parse_tables(raw: str | None) -> tuple[str, ...] | None:
     return values
 
 
-def _build_graph(snapshot: Mapping[str, Any], project_id: str | None, query: str, limit: int) -> dict[str, Any]:
+def _parse_bool(raw: str | None, *, name: str) -> bool:
+    value = str(raw or "").strip().casefold()
+    if not value:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+def _build_graph(
+    snapshot: Mapping[str, Any], project_id: str | None, query: str, limit: int
+) -> dict[str, Any]:
     return build_knowledge_graph(
         snapshot["tables"],
         project_id=project_id,
@@ -228,7 +260,69 @@ def _build_graph(snapshot: Mapping[str, Any], project_id: str | None, query: str
     )
 
 
-def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseHTTPRequestHandler]:
+def _resolve_operational_owner(storage: SQLiteStorage, configured_owner: str | None) -> str:
+    configured = str(configured_owner or "").strip()
+    if configured:
+        return configured
+    with storage.connect() as connection:
+        rows = connection.execute(
+            "select distinct owner_id from projects where owner_id is not null and trim(owner_id) != '' "
+            "order by owner_id asc limit 2"
+        ).fetchall()
+    owners = [str(row[0]) for row in rows]
+    if len(owners) == 1:
+        return owners[0]
+    if not owners:
+        raise ValueError("operational owner is not configured and no project owner can be inferred")
+    raise ValueError("operational owner must be configured when multiple owners exist")
+
+
+def _operational_limits(limit: int) -> OperationalMapLimits:
+    return OperationalMapLimits(
+        max_projects=min(limit, 100),
+        max_repositories=min(20, max(1, limit)),
+        max_nodes=min(limit, 500),
+        max_edges=min(limit * 3, 1500),
+        max_records_per_kind=min(limit, 200),
+    )
+
+
+def _operational_payload(
+    storage: SQLiteStorage,
+    *,
+    owner_id: str | None,
+    project_id: str | None,
+    limit: int,
+    verification: str | None,
+    risk: str | None,
+    changed_only: bool,
+) -> dict[str, Any]:
+    owner = _resolve_operational_owner(storage, owner_id)
+    service = OperationalMapService(storage, owner_id=owner)
+    limits = _operational_limits(limit)
+    if project_id:
+        return service.impact_graph(
+            project_id,
+            limits=limits,
+            verification=verification,
+            risk=risk,
+            changed_only=changed_only,
+        )
+    if changed_only:
+        raise ValueError("changed_only requires project_id")
+    return service.project_overview(
+        limits=limits,
+        verification=verification,
+        risk=risk,
+    )
+
+
+def build_handler(
+    storage: SQLiteStorage,
+    *,
+    row_limit: int = 100,
+    owner_id: str | None = None,
+) -> type[BaseHTTPRequestHandler]:
     class DashboardHandler(BaseHTTPRequestHandler):
         def _security_headers(self, *, allow_script: bool = False) -> None:
             self.send_header("Cache-Control", "no-store")
@@ -241,15 +335,50 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                 f"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'{script}",
             )
 
+        def _send_payload(self, payload: bytes, content_type: str, *, allow_script: bool = False) -> None:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self._security_headers(allow_script=allow_script)
+            self.end_headers()
+            self.wfile.write(payload)
+
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
-            allow_script = False
             try:
                 requested = int(params.get("limit", [str(row_limit)])[0])
                 limit = min(row_limit, max(1, requested))
                 query = params.get("q", [""])[0].strip()
                 project_id = params.get("project_id", [""])[0].strip() or None
+
+                if parsed.path in _OPERATIONAL_PATHS:
+                    verification = params.get("verification", [""])[0].strip() or None
+                    risk = params.get("risk", [""])[0].strip() or None
+                    changed_only = _parse_bool(
+                        params.get("changed_only", [""])[0], name="changed_only"
+                    )
+                    if parsed.path in {"/api/operational/graph", "/galaxy/operational"} and not project_id:
+                        raise ValueError("project_id is required for the operational graph")
+                    operational = _operational_payload(
+                        storage,
+                        owner_id=owner_id,
+                        project_id=project_id,
+                        limit=limit,
+                        verification=verification,
+                        risk=risk,
+                        changed_only=changed_only,
+                    )
+                    if parsed.path == "/galaxy/operational":
+                        payload = render_galaxy_view(operational, project_id=project_id).encode()
+                        self._send_payload(payload, "text/html; charset=utf-8", allow_script=True)
+                    else:
+                        payload = json.dumps(
+                            operational, ensure_ascii=False, default=str, indent=2
+                        ).encode()
+                        self._send_payload(payload, "application/json; charset=utf-8")
+                    return
+
                 selected_tables = _parse_tables(params.get("tables", [""])[0])
                 snapshot = dashboard_snapshot(
                     storage,
@@ -258,12 +387,18 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                     tables=selected_tables,
                     query=query,
                 )
+                allow_script = False
                 if parsed.path in {"/api/snapshot", "/export.json"}:
                     payload, content_type = export_snapshot(snapshot, export_format="json")
                 elif parsed.path in {"/api/graph", "/api/graph/context"}:
                     graph = _build_graph(snapshot, project_id, query, limit)
                     if parsed.path == "/api/graph/context":
-                        selected = [item for raw in params.get("select", []) for item in raw.split(",") if item]
+                        selected = [
+                            item
+                            for raw in params.get("select", [])
+                            for item in raw.split(",")
+                            if item
+                        ]
                         if not selected:
                             selected = [str(node["id"]) for node in graph["nodes"][:1]]
                         graph = compact_graph_context(
@@ -271,12 +406,17 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
                             selected,
                             depth=min(4, max(0, int(params.get("depth", ["1"])[0]))),
                             max_nodes=min(limit, 100),
-                            max_chars=min(12000, max(1, int(params.get("max_chars", ["6000"])[0]))),
+                            max_chars=min(
+                                12000,
+                                max(1, int(params.get("max_chars", ["6000"])[0])),
+                            ),
                         )
                     payload = json.dumps(graph, ensure_ascii=False, default=str).encode()
                     content_type = "application/json; charset=utf-8"
                 elif parsed.path == "/galaxy":
-                    payload = render_galaxy_view(_build_graph(snapshot, project_id, query, limit), project_id=project_id).encode()
+                    payload = render_galaxy_view(
+                        _build_graph(snapshot, project_id, query, limit), project_id=project_id
+                    ).encode()
                     content_type = "text/html; charset=utf-8"
                     allow_script = True
                 elif parsed.path == "/export.csv":
@@ -290,12 +430,7 @@ def build_handler(storage: SQLiteStorage, *, row_limit: int = 100) -> type[BaseH
             except (ValueError, TypeError) as exc:
                 self.send_error(HTTPStatus.BAD_REQUEST, str(exc))
                 return
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(payload)))
-            self._security_headers(allow_script=allow_script)
-            self.end_headers()
-            self.wfile.write(payload)
+            self._send_payload(payload, content_type, allow_script=allow_script)
 
         def log_message(self, _format: str, *_args: object) -> None:
             return
@@ -307,7 +442,10 @@ def serve_dashboard(config: DashboardConfig) -> None:
     config.validate()
     storage = SQLiteStorage(config.sqlite_path)
     storage.initialize()
-    server = ThreadingHTTPServer((config.host, config.port), build_handler(storage, row_limit=config.row_limit))
+    server = ThreadingHTTPServer(
+        (config.host, config.port),
+        build_handler(storage, row_limit=config.row_limit, owner_id=config.owner_id),
+    )
     print(f"Dashboard available at http://{config.host}:{config.port}")
     server.serve_forever()
 
@@ -318,6 +456,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--sqlite-path", default=str(Path.home() / ".memory-mcp" / "memory.db"))
     parser.add_argument("--row-limit", type=int, default=100)
+    parser.add_argument("--owner-id", default=os.environ.get("OWNER_ID"))
     args = parser.parse_args()
     serve_dashboard(
         DashboardConfig(
@@ -325,6 +464,7 @@ def main() -> None:
             port=args.port,
             sqlite_path=Path(args.sqlite_path).expanduser().resolve(),
             row_limit=args.row_limit,
+            owner_id=args.owner_id,
         )
     )
 
