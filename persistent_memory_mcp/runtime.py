@@ -7,8 +7,12 @@ import argparse
 from dotenv import load_dotenv
 
 from . import cli
-from .application import create_application
+from .application import assert_migration_ready, create_application
 from .settings import RuntimeSettings
+
+# Backward-compatible private alias retained for existing tests/importers while
+# the guard itself now belongs to the explicit application composition layer.
+_assert_migration_ready = assert_migration_ready
 
 
 def command_serve(_args: argparse.Namespace) -> int:
