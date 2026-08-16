@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from . import cli
 from .code_intelligence import install_code_intelligence
+from .continuation_contract import install_continuation_contract
 from .deletion_integration import install_confirmed_deletion
 from .deployment_risk import install_deployment_risk
 from .deployment_storage import install_deployment_storage
@@ -70,6 +71,9 @@ def command_serve(_args: argparse.Namespace) -> int:
     install_code_intelligence(server_module)
     install_progressive_retrieval(server_module, settings)
     install_symbol_evolution(server_module, settings)
+    # Continuation must wrap end_session before the lifecycle layer captures it,
+    # so explicit closes, handoffs, and idle expiry all persist the same contract.
+    install_continuation_contract(server_module)
     install_session_lifecycle(server_module)
     server_module.main()
     return 0
