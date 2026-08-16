@@ -353,7 +353,11 @@ class OperationalMapService:
         nodes: dict[str, OperationalNode],
         edges: list[OperationalEdge],
     ) -> tuple[dict[str, OperationalNode], list[OperationalEdge]]:
-        changed = {node_id for node_id, node in nodes.items() if node.changed}
+        changed = {
+            node_id
+            for node_id, node in nodes.items()
+            if node.changed and node.kind in {"file", "symbol"}
+        }
         if not changed:
             anchors = {node_id for node_id, node in nodes.items() if node.kind == "project"}
             return {node_id: nodes[node_id] for node_id in anchors}, []
