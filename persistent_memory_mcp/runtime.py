@@ -17,6 +17,7 @@ from .embedding_lifecycle import install_embedding_lifecycle
 from .evaluation_integration import install_agent_evaluation
 from .git_verification import install_git_verification
 from .migration_service import MigrationService
+from .pagination_integration import install_paginated_reads
 from .repository_retrieval import install_progressive_retrieval
 from .restore_integration import install_verified_restore
 from .security_integration import install_security_boundaries
@@ -71,6 +72,7 @@ def command_serve(_args: argparse.Namespace) -> int:
     install_code_intelligence(server_module)
     install_progressive_retrieval(server_module, settings)
     install_symbol_evolution(server_module, settings)
+    install_paginated_reads(server_module)
     # Continuation must wrap end_session before the lifecycle layer captures it,
     # so explicit closes, handoffs, and idle expiry all persist the same contract.
     install_continuation_contract(server_module)
