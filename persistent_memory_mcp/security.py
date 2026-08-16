@@ -96,13 +96,22 @@ def _normalized_mapping_key(value: Any) -> str:
     return str(value).strip().casefold().replace("-", "_")
 
 
+def _is_redaction_marker(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("[REDACTED:")
+        and value.endswith("]")
+    )
+
+
 def redact_sensitive_value(value: Any) -> RedactedValue:
     """Recursively redact secret-bearing values while preserving container shape.
 
-    Strings are inspected by known secret patterns. Mapping values whose exact key is
-    credential-bearing (for example ``token`` or ``password``) are redacted even when
-    the value itself does not resemble a provider-specific secret. Mapping keys remain
-    unchanged so callers retain the original payload shape.
+    Strings are inspected by known secret patterns first. For exact credential-bearing
+    mapping keys such as ``token`` or ``password``, a non-empty scalar string that did
+    not match a known pattern is still redacted. Nested lists and mappings keep their
+    shape and rely on recursive detection, and existing redaction markers remain
+    idempotent. Mapping keys themselves are unchanged.
     """
 
     if isinstance(value, str):
@@ -113,11 +122,18 @@ def redact_sensitive_value(value: Any) -> RedactedValue:
         redactions: list[str] = []
         clean: dict[Any, Any] = {}
         for key, item in value.items():
-            if _normalized_mapping_key(key) in _SENSITIVE_MAPPING_KEYS and item not in (None, ""):
+            result = redact_sensitive_value(item)
+            sensitive_scalar = (
+                _normalized_mapping_key(key) in _SENSITIVE_MAPPING_KEYS
+                and isinstance(item, str)
+                and bool(item)
+                and not result.redactions
+                and not _is_redaction_marker(result.value)
+            )
+            if sensitive_scalar:
                 clean[key] = "[REDACTED:sensitive_field]"
                 redactions.append("sensitive_field")
                 continue
-            result = redact_sensitive_value(item)
             clean[key] = result.value
             redactions.extend(result.redactions)
         return RedactedValue(clean, tuple(redactions))
