@@ -1,0 +1,29 @@
+name: Dashboard maintenance diagnostics
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-dashboard-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio
+      - name: Focused dashboard maintenance tests
+        run: >-
+          pytest -vv -x
+          tests/test_dashboard_status.py
+          tests/test_dashboard_maintenance_http.py
+          tests/test_dashboard_actions.py
