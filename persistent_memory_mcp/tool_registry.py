@@ -22,7 +22,7 @@ class ToolRegistration:
 
 
 class ToolRegistry:
-    """Synchronize one tool across module, FastMCP and legacy compatibility registries."""
+    """Synchronize one tool across module, MCP server and legacy compatibility registries."""
 
     def __init__(self, server_module: Any) -> None:
         server = getattr(server_module, "server", None)
@@ -53,7 +53,7 @@ class ToolRegistry:
             raise ToolRegistryError(f"tool {tool_name} must be callable")
 
         setattr(self.server_module, tool_name, function)
-        found_existing, introspectable = self._replace_existing(tool_name, function)
+        found_existing = self._replace_existing(tool_name, function)
         if not found_existing:
             factory = getattr(self.server, "tool", None)
             if not callable(factory):
@@ -69,10 +69,6 @@ class ToolRegistry:
                 raise ToolRegistryError(
                     f"MCP server could not register required tool {tool_name}"
                 ) from exc
-            if introspectable and not self._is_registered(tool_name):
-                raise ToolRegistryError(
-                    f"MCP server did not retain required tool {tool_name} after registration"
-                )
 
         handlers = getattr(self.server_module, "TOOL_HANDLERS", None)
         if isinstance(handlers, dict):
@@ -80,7 +76,11 @@ class ToolRegistry:
 
         schemas = getattr(self.server_module, "TOOL_SCHEMAS", None)
         if isinstance(schemas, list):
-            matches = [item for item in schemas if isinstance(item, dict) and item.get("name") == tool_name]
+            matches = [
+                item
+                for item in schemas
+                if isinstance(item, dict) and item.get("name") == tool_name
+            ]
             if matches:
                 matches[0]["description"] = tool_description
                 for duplicate in matches[1:]:
@@ -92,43 +92,30 @@ class ToolRegistry:
         self._registrations[tool_name] = registration
         return function
 
-    def _replace_existing(self, name: str, function: ToolFunction) -> tuple[bool, bool]:
+    def _replace_existing(self, name: str, function: ToolFunction) -> bool:
         found = False
-        introspectable = False
 
-        tools = getattr(self.server, "_tools", None)
-        if isinstance(tools, dict):
-            introspectable = True
-            if name in tools:
-                tools[name] = function
-                found = True
-
-        manager = getattr(self.server, "_tool_manager", None)
-        managed = getattr(manager, "_tools", None)
-        if isinstance(managed, dict):
-            introspectable = True
-            if name in managed:
-                existing = managed[name]
-                try:
-                    if hasattr(existing, "fn"):
-                        existing.fn = function
-                    elif hasattr(existing, "function"):
-                        existing.function = function
-                    else:
-                        managed[name] = function
-                except (AttributeError, TypeError):
-                    managed[name] = function
-                found = True
-
-        return found, introspectable
-
-    def _is_registered(self, name: str) -> bool:
         tools = getattr(self.server, "_tools", None)
         if isinstance(tools, dict) and name in tools:
-            return True
+            tools[name] = function
+            found = True
+
         manager = getattr(self.server, "_tool_manager", None)
         managed = getattr(manager, "_tools", None)
-        return isinstance(managed, dict) and name in managed
+        if isinstance(managed, dict) and name in managed:
+            existing = managed[name]
+            try:
+                if hasattr(existing, "fn"):
+                    existing.fn = function
+                elif hasattr(existing, "function"):
+                    existing.function = function
+                else:
+                    managed[name] = function
+            except (AttributeError, TypeError):
+                managed[name] = function
+            found = True
+
+        return found
 
 
 def get_tool_registry(server_module: Any) -> ToolRegistry:
