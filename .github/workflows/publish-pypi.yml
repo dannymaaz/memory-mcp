@@ -34,7 +34,7 @@ jobs:
             | grep -Fx "$EXPECTED_TAG"
 
       - name: Checkout the exact release tag
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_tag }}
           fetch-depth: 0
@@ -46,7 +46,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -75,7 +75,7 @@ jobs:
           python -m twine check dist/*.whl dist/*.tar.gz
 
       - name: Stage verified distributions for publishing
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: verified-pypi-v0.3.0
           path: |
@@ -95,7 +95,7 @@ jobs:
       id-token: write
     steps:
       - name: Retrieve verified distributions
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: verified-pypi-v0.3.0
           path: dist
