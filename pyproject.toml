@@ -79,6 +79,9 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
 
+[tool.ruff.lint.per-file-ignores]
+"persistent_memory_mcp/symbol_evolution.py" = ["F401"]
+
 [tool.flake8]
 max-line-length = 100
 extend-ignore = ["E203", "W503"]
