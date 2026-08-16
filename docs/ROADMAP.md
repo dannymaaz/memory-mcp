@@ -83,7 +83,7 @@ See [DASHBOARD_MAINTENANCE.md](DASHBOARD_MAINTENANCE.md).
 **Gate:** Quality #346  
 **Merge:** `f85b4d691ce1716b20ad7a49a02ca62227d03614`
 
-Delivered `create_application(settings)`, deterministic composition order and an idempotent shared Tool Registry. Confirmed Deletion and Verified Restore/Maintenance were migrated away from duplicated dynamic FastMCP registration helpers without changing their public contracts.
+Delivered `create_application(settings)`, deterministic composition order and an idempotent shared Tool Registry. Confirmed Deletion and Verified Restore/Maintenance were migrated away from duplicated dynamic registration helpers without changing their public contracts.
 
 See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
 
@@ -94,9 +94,29 @@ See [APPLICATION_COMPOSITION.md](APPLICATION_COMPOSITION.md).
 **Gate:** Quality #360  
 **Merge:** `df854b6ff28c12aeb47a7bd53bed84429dcbc58c`
 
-The current runtime uses the MCP Python SDK v1 `FastMCP` API and is explicitly constrained to `mcp>=1.28,<2`. Regression coverage proves the installed SDK implementation is used rather than the fallback server and validates Tool Registry behavior against the installed implementation.
+This was the compatibility boundary that made the v0.3.0 release line safe: the release candidate uses the MCP Python SDK v1 `FastMCP` API and is explicitly constrained to `mcp>=1.28,<2`.
 
-A deliberate migration to MCP v2 `MCPServer` is tracked separately in Issue #88.
+That boundary remains part of the immutable v0.3.0 release candidate and is not rewritten by later `main` development.
+
+### MCP SDK v2 runtime migration — 🟡 In review
+
+**GitHub:** Issue #88 / PR #100  
+**Notion:** MEM-42  
+**Functional gate:** Quality #387
+
+Post-v0.3 `main` migrates deliberately to the MCP Python SDK v2 `MCPServer` API:
+
+- `src.server` imports the installed `mcp.server.MCPServer` directly;
+- the local silent MCP fallback is removed;
+- dependency policy becomes `mcp>=2,<3`;
+- Tool Registry replacement uses public `remove_tool()` + `add_tool()` rather than private SDK registries;
+- public tool names, arguments, payloads and stdio transport remain unchanged;
+- real installed-SDK regressions exercise public tool listing/calling and replacement;
+- no database, storage, Dashboard or destructive-confirmation contract changes.
+
+Quality #387 validates the functional migration across the supported matrix before this documentation reconciliation. A fresh exact-head Quality is required before PR #100 can be marked complete and merged.
+
+See [MCP_SDK_COMPATIBILITY.md](MCP_SDK_COMPATIBILITY.md).
 
 ## Repository maintenance — ✅ Complete
 
@@ -127,7 +147,7 @@ The **only valid `v0.3.0` tag target** is:
 9e0a084dd9b179612082edef99e1c3c9bf563ffa
 ```
 
-Do not tag current `main` and do not tag the superseded `4dc160c...` baseline.
+Do not tag current `main` and do not tag the superseded `4dc160c...` baseline. The MCP v2 migration in PR #100 is post-v0.3 work and must not alter this release target.
 
 ### Repository-side PyPI publication path — ✅ Complete
 
@@ -183,9 +203,9 @@ Workspace invitations, shared team roles, billing/organization administration an
 
 ## Next recommended order
 
-1. Complete **Issue #53 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
-2. Close the remaining **MEM-17 distribution-scope documentation decision**, keeping optional deployments separate from the local-first core.
-3. After v0.3.0 publication is stable, evaluate **Issue #88** as the deliberate MCP v2 migration.
+1. Finish **PR #100 / Issue #88 / MEM-42** with exact-head Quality after documentation reconciliation, then merge the MCP v2 mainline migration.
+2. Complete **Issue #53 / MEM-33** operational release steps: tag → artifact gate → GitHub Release → PyPI Trusted Publisher → publication → public smoke test → MCP Registry.
+3. Close the remaining **MEM-17 distribution-scope documentation decision**, keeping optional deployments separate from the local-first core.
 4. Start no new numbered product phase until release evidence and external distribution state are synchronized.
 
 ## Definition of done
