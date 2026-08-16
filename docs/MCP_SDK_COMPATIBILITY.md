@@ -1,69 +1,70 @@
 # MCP SDK compatibility boundary
 
-Persistent Memory MCP currently implements its server against the MCP Python SDK **v1 FastMCP API**. The supported dependency range for this implementation is therefore:
+Persistent Memory MCP `main` uses the MCP Python SDK **v2 MCPServer API**. The supported dependency range for post-v0.3 development is:
 
 ```text
-mcp>=1.28,<2
+mcp>=2,<3
 ```
 
-This upper bound is intentional and temporary. It prevents an incompatible MCP v2 installation from silently selecting the repository's minimal local fallback server.
-
-## Why the bound is required
-
-`src.server` currently imports:
+The runtime imports the installed SDK directly:
 
 ```python
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 ```
 
-MCP Python SDK v2 changed the high-level server API and no longer exposes that v1 import path. Before PR #85, the unconstrained dependency `mcp>=0.1.0` resolved to MCP 2.x. The broad `ModuleNotFoundError` fallback in `src.server` then treated the moved API as if MCP were not installed and constructed the repository's fallback server instead.
+There is no local MCP fallback in packaged runtime operation. An absent or incompatible SDK must fail explicitly rather than silently selecting a different server implementation.
 
-That behavior was unsafe from a compatibility perspective because package installation succeeded while the runtime silently used a different server implementation.
+## Runtime contract
 
-## Current contract
+The post-v0.3 runtime keeps these invariants:
 
-PR #85 restores an explicit relationship between code and dependency:
+- `src.server.MCPServer` is the installed `mcp.server.MCPServer` class;
+- `src.server.server` is an instance of that installed SDK class;
+- public MCP tool names, arguments and return payloads remain unchanged;
+- the packaged entrypoint continues to run the server with `transport="stdio"`;
+- the Application composition root and its initialization order remain unchanged;
+- Continuation Contract still wraps `end_session` before Session Lifecycle captures it;
+- local-first SQLite behavior, Dashboard/Galaxy exposure and destructive confirmation semantics are unchanged.
 
-- install MCP SDK v1.28 or newer within the v1 major line;
-- `src.server.FastMCP` must be the installed `mcp.server.fastmcp.FastMCP`;
-- `src.server.server` must be an instance of that installed SDK class;
-- the MEM-29 `ToolRegistry` must register and replace tools against the installed FastMCP implementation;
-- wheel/sdist clean installation and the v0.2.0 upgrade regression must resolve the same supported range.
+## Tool Registry contract
 
-CI has a dedicated compatibility regression for these invariants.
+`persistent_memory_mcp.tool_registry.ToolRegistry` no longer reaches into MCP SDK private registration structures.
 
-## Why PR #85 does not migrate directly to MCP v2
+New tools are registered through the public MCP v2 API:
 
-MEM-29 / PR #80 only recently introduced the explicit Application composition root and Tool Registry. A major MCP server migration would require validating the v2 server constructor, registration/replacement API, Tool Registry behavior and stdio transport together.
+```python
+server.add_tool(function, name=name, description=description)
+```
 
-Combining those changes with the dependency repair would make it harder to distinguish a packaging regression from a server-API migration regression.
+Known tools are replaced deterministically by calling `remove_tool(name)` followed by `add_tool(...)`. The application's `TOOL_HANDLERS` and `TOOL_SCHEMAS` mirrors determine whether a tool is already known, so replacement does not depend on `_tools` or `_tool_manager` internals.
 
-Issue #88 therefore owns the deliberate v2 migration.
+Compatibility regressions exercise the real installed `MCPServer` with its public `list_tools()` and `call_tool()` methods to prove that replacement changes both the advertised description and the callable executed by the server.
 
-## MCP v2 follow-up
+## Version and release boundary
 
-Issue #88 must complete these steps before the `<2` upper bound is removed:
+This migration is **post-v0.3 mainline work**. It does not rewrite the immutable v0.3.0 release candidate tracked by Issue #53. That release target remains bound to the dependency/runtime state that was validated for the release candidate.
 
-1. migrate `src.server` to the supported MCP v2 high-level server API;
-2. adapt Tool Registry to prefer supported v2 registration/replacement APIs;
-3. prove the runtime uses the installed v2 server rather than a fallback;
-4. preserve public MCP tool names, arguments, payloads and stdio behavior;
-5. narrow or remove the broad fallback so an installed-but-incompatible SDK cannot be mistaken for an absent dependency;
-6. pass the full Ubuntu/Windows/macOS × Python 3.11–3.13 Quality matrix;
-7. pass clean wheel install and installed v0.2.0 upgrade validation;
-8. only then widen the package dependency to the validated v2-compatible range.
+A later release cut from `main` will carry the MCP v2 dependency policy.
 
-## Fallback policy
+## Validation requirements
 
-The local fallback in `src.server` is not a substitute for normal packaged operation. Packaged/CI operation must use the declared MCP SDK dependency. Any future fallback retention should be explicit, test-only/development-oriented and must not mask an installed dependency with an incompatible API.
+Before the MCP v2 migration can be considered complete, all of the following must pass on the exact PR head:
+
+1. MCP SDK v2 installs on Python 3.11, 3.12 and 3.13;
+2. compile and Ruff checks pass;
+3. full pytest and agent-evaluation regressions pass on Ubuntu, Windows and macOS;
+4. real `MCPServer` tool listing/calling and replacement tests pass;
+5. clean wheel/sdist installation passes on all supported operating systems;
+6. installed v0.2.0 upgrade validation remains green;
+7. dependency audit and reference quality gates remain green.
 
 ## Scope
 
-This compatibility repair does not change:
+The MCP v2 migration does not change:
 
 - database schema or migrations;
 - storage/backend behavior;
 - public MCP tool contracts;
-- Dashboard/Galaxy exposure;
-- destructive confirmation semantics;
+- Dashboard/Galaxy behavior;
+- backup/restore/deletion confirmation rules;
 - local-first product scope.
