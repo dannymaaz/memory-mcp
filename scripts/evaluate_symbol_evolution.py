@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import tempfile
 from pathlib import Path
@@ -139,7 +140,9 @@ def evaluate() -> dict[str, object]:
             language = symbol.get("language")
             if language:
                 languages.add(str(language))
-        with service._connect() as connection:
+
+        connection = sqlite3.connect(database)
+        try:
             languages.update(
                 str(row[0])
                 for row in connection.execute(
@@ -149,6 +152,8 @@ def evaluate() -> dict[str, object]:
                 ).fetchall()
                 if row[0]
             )
+        finally:
+            connection.close()
 
         counts = diff["counts"]
         checks = {
