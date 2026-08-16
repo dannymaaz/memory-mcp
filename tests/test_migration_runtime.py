@@ -66,7 +66,7 @@ def test_migration_preview_is_read_only(
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "preview"
     assert payload["plan"]["schema_version"] == 0
-    assert payload["plan"]["pending"][0]["version"] == 1
+    assert [item["version"] for item in payload["plan"]["pending"]] == [1, 2]
     connection = sqlite3.connect(database)
     try:
         assert int(connection.execute("pragma user_version").fetchone()[0]) == 0
@@ -129,10 +129,10 @@ def test_explicit_apply_upgrades_and_creates_backup(
     assert Path(payload["backup"]["manifest_path"]).exists()
     connection = sqlite3.connect(database)
     try:
-        assert int(connection.execute("pragma user_version").fetchone()[0]) == 1
+        assert int(connection.execute("pragma user_version").fetchone()[0]) == 2
         assert connection.execute(
             "select version from schema_migrations order by version"
-        ).fetchall() == [(1,)]
+        ).fetchall() == [(1,), (2,)]
     finally:
         connection.close()
 
@@ -167,6 +167,6 @@ def test_new_sqlite_database_is_initialized_at_current_schema(tmp_path: Path) ->
     SQLiteStorage(database).initialize()
 
     plan = MigrationService(database).plan()
-    assert plan.schema_version == 1
+    assert plan.schema_version == 2
     assert plan.pending == ()
-    assert [item["version"] for item in plan.applied] == [1]
+    assert [item["version"] for item in plan.applied] == [1, 2]
