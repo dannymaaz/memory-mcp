@@ -200,7 +200,10 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
     query = html.escape(str(filters.get("query") or ""), quote=True)
     project = html.escape(str(filters.get("project_id") or ""), quote=True)
     galaxy_href = "/galaxy" + (f"?project_id={project}" if project else "")
-    operational_href = "/galaxy/operational" + (f"?project_id={project}" if project else "")
+    operational_href = (
+        f"/galaxy/operational?project_id={project}" if project else "/api/operational/projects"
+    )
+    operational_label = "Operational galaxy" if project else "Operational projects"
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width">'
@@ -219,7 +222,7 @@ def render_dashboard(snapshot: Mapping[str, Any]) -> str:
         f'<input name="q" placeholder="Search" maxlength="200" value="{query}">'
         '<button type="submit">Filter</button>'
         f'<a href="{galaxy_href}">Open galaxy</a>'
-        f'<a href="{operational_href}">Operational galaxy</a></form>'
+        f'<a href="{operational_href}">{operational_label}</a></form>'
         f'<div class="cards">{cards}</div>{"".join(sections)}</main></body></html>'
     )
 
