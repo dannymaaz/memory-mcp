@@ -95,7 +95,7 @@ jobs:
       id-token: write
     steps:
       - name: Retrieve verified distributions
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: verified-pypi-v0.3.0
           path: dist
